@@ -1,0 +1,574 @@
+{
+  "name": "Email an ROI estimate and price range from a request form",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Email an ROI estimate and price range from a request form\n\n### How it works\nFor freelancers and small studios who price one automation for a client and want a number they can defend. A prospect fills an n8n form with how often the work happens, how long it takes today, how long a person would still spend after automation, and the hourly cost of that person. A Code node, with no AI key, applies a published cost based model: hours and value saved, a pilot price rounded up to $50, a value ceiling payback check that can fail honestly, a deposit and balance, three monthly retainer tiers (flagged when a tier takes more than half the monthly value), and a first year view. The estimate is emailed to the prospect, shown on the form ending page, and added to a Google Sheet. The email states that the figures are estimates only, not a quote or a guarantee.\n\nLimits: results depend entirely on the numbers entered. There is no spam or duplicate check. If Gmail fails, the form ending may not appear and no sheet row is written.\n\n### Setup\n1. In Config, set your build hours, hourly rate, risk buffer, tool costs, target payback, deposit share, retainer rates, signature, spreadsheet ID and sheet name.\n2. Connect Gmail OAuth2 on Send Estimate (Gmail) and Google Sheets OAuth2 on Append to Google Sheet.\n3. Add this header row to the sheet tab: timestamp, receivedAt, name, email, company, valuePerMonth, suggestedPilotPrice, paybackCheck, firstYearCost, process.\n4. Activate, open the form at `/form/automation-roi`, submit the sample numbers, and check the ending page, the email and the sheet row.\n\n### Customization\nChange the rates and retainer hours in Config. Edit the email wording in Validate and Estimate. Swap Gmail for the Send Email node to use SMTP.",
+        "height": 980,
+        "width": 560
+      },
+      "id": "6c2eca59-395f-41d9-8469-5d431efc5ab1",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Collect the numbers\nThe form asks for the client's current work volume and cost. Your rates stay in Config, not on the form.",
+        "height": 360,
+        "width": 700,
+        "color": 7
+      },
+      "id": "86e03d25-1deb-4eb1-be1a-012b6ac98aad",
+      "name": "Section: Collect the numbers",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Estimate from published formulas\nApplies the same arithmetic as the free ROI and pricing calculator. No AI key is used.",
+        "height": 360,
+        "width": 520,
+        "color": 7
+      },
+      "id": "58a42d57-2e7d-4f14-90e5-20e783d34fff",
+      "name": "Section: Estimate from published formulas",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        740,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Estimates only, not a quote\nThe email and ending page say so. Do not present these figures as a guarantee or a formal proposal.",
+        "height": 240,
+        "width": 280,
+        "color": 3
+      },
+      "id": "8d51f44a-5043-4cb4-ae6d-f1b376712b16",
+      "name": "Warning: Estimates only",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        980,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Send the estimate\nEmails the range to the prospect and shows the same figures on the form ending page.",
+        "height": 360,
+        "width": 440,
+        "color": 7
+      },
+      "id": "b83aed79-6f89-407e-9a0d-24543a8ac0f4",
+      "name": "Section: Send the estimate",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Log every request\nAdds one row per form submission, including the payback check.",
+        "height": 520,
+        "width": 520,
+        "color": 7
+      },
+      "id": "274578d6-301f-4eb1-999e-3def571fd856",
+      "name": "Section: Log every request",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1860,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Request an automation estimate",
+        "formDescription": "Share how the work is done today. You will get an estimate of hours and value saved, a suggested pilot price range, and monthly retainer options. These figures are estimates only, not a quote or a guarantee.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Your name",
+              "fieldName": "name",
+              "fieldType": "text",
+              "requiredField": true,
+              "placeholder": "Jordan Rivera"
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldName": "email",
+              "fieldType": "email",
+              "requiredField": true,
+              "placeholder": "jordan@example.com"
+            },
+            {
+              "fieldLabel": "Company",
+              "fieldName": "company",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "Rivera Plumbing"
+            },
+            {
+              "fieldLabel": "Process to automate",
+              "fieldName": "process",
+              "fieldType": "textarea",
+              "requiredField": false,
+              "placeholder": "Quote requests from the website form"
+            },
+            {
+              "fieldLabel": "Tasks per week",
+              "fieldName": "tasksPerWeek",
+              "fieldType": "number",
+              "requiredField": true,
+              "placeholder": "120"
+            },
+            {
+              "fieldLabel": "Minutes per task today",
+              "fieldName": "minutesToday",
+              "fieldType": "number",
+              "requiredField": true,
+              "placeholder": "6"
+            },
+            {
+              "fieldLabel": "Minutes still spent per task after automation",
+              "fieldName": "minutesAfter",
+              "fieldType": "number",
+              "requiredField": true,
+              "placeholder": "1"
+            },
+            {
+              "fieldLabel": "Hourly cost of the person doing it now",
+              "fieldName": "hourlyCost",
+              "fieldType": "number",
+              "requiredField": true,
+              "placeholder": "35"
+            },
+            {
+              "fieldLabel": "Other monthly savings (optional)",
+              "fieldName": "otherMonthlySavings",
+              "fieldType": "number",
+              "requiredField": false,
+              "placeholder": "0"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "path": "automation-roi",
+          "buttonLabel": "Get the estimate"
+        }
+      },
+      "id": "803dfe30-1c5d-4ad1-b774-04058191fa53",
+      "name": "Request Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        320
+      ],
+      "webhookId": "9641c7eb-9ac0-4739-99f0-09389776ff2b"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "include": "all",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ab94b414-5dba-40cd-b18f-8416f7dae0c8",
+              "name": "workingWeeksPerYear",
+              "value": 48,
+              "type": "number"
+            },
+            {
+              "id": "5d71fee9-e9f5-4d94-ac5c-4a357084c15d",
+              "name": "buildHours",
+              "value": 16,
+              "type": "number"
+            },
+            {
+              "id": "c481fab6-817d-4faa-a1ef-642c786b672e",
+              "name": "hourlyRate",
+              "value": 75,
+              "type": "number"
+            },
+            {
+              "id": "4f3f84bb-81ed-4c5c-9d6f-8516e36a6383",
+              "name": "riskBuffer",
+              "value": 0.25,
+              "type": "number"
+            },
+            {
+              "id": "2a1568e1-ce4e-497a-b4f8-d38f23ad245f",
+              "name": "toolCosts",
+              "value": 40,
+              "type": "number"
+            },
+            {
+              "id": "549d8a18-98a7-452e-949f-11a71830e984",
+              "name": "targetPaybackMonths",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "c5e64461-48cc-4f72-b873-8178516de155",
+              "name": "depositPct",
+              "value": 0.5,
+              "type": "number"
+            },
+            {
+              "id": "4fb3d61b-ae1b-477c-8015-b52d1dea4e1d",
+              "name": "retainerRate",
+              "value": 75,
+              "type": "number"
+            },
+            {
+              "id": "aa0665db-1199-45cc-b674-9c7baadefdca",
+              "name": "monthlyTools",
+              "value": 20,
+              "type": "number"
+            },
+            {
+              "id": "61e8038c-2001-4139-a16c-4a77f4cb4b5e",
+              "name": "essentialsHours",
+              "value": 2,
+              "type": "number"
+            },
+            {
+              "id": "a66c8532-72f3-4d12-81b9-098bc85ea1dd",
+              "name": "essentialsDiscount",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "828a912f-7083-4641-bce5-4968fe3f6f0d",
+              "name": "standardHours",
+              "value": 4,
+              "type": "number"
+            },
+            {
+              "id": "fc722256-c71d-4b62-b2ad-dbee74451fee",
+              "name": "standardDiscount",
+              "value": 0.05,
+              "type": "number"
+            },
+            {
+              "id": "9a178b04-0441-4647-93c2-fc7ea3a8bbe6",
+              "name": "growthHours",
+              "value": 8,
+              "type": "number"
+            },
+            {
+              "id": "6ead7d0c-5294-495f-b72a-95d3afe47a88",
+              "name": "growthDiscount",
+              "value": 0.1,
+              "type": "number"
+            },
+            {
+              "id": "13211bca-1a96-4753-b37f-732545c43ffe",
+              "name": "firstYearTier",
+              "value": "Standard",
+              "type": "string"
+            },
+            {
+              "id": "2cf23e88-5e67-41a4-ba21-4fcfa7852ad3",
+              "name": "signature",
+              "value": "Best,\nYour Name\nYour Company",
+              "type": "string"
+            },
+            {
+              "id": "9c425aff-3b5b-4d1a-8ba2-546e5156c969",
+              "name": "subjectPrefix",
+              "value": "Your automation estimate",
+              "type": "string"
+            },
+            {
+              "id": "d7fe2ada-1b4a-4bd0-aa02-3488ca7faad5",
+              "name": "spreadsheetId",
+              "value": "REPLACE_WITH_SPREADSHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "38b078a1-13b6-4497-9054-e9eae82546a3",
+              "name": "sheetName",
+              "value": "Log",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d532ec33-fff9-4a69-90e0-cd3b53335c94",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        320
+      ],
+      "notes": "Edit these values before activating. They are your rates, not the client's.\nworkingWeeksPerYear: usually 48.\nbuildHours, hourlyRate, riskBuffer, toolCosts: used for the cost based pilot price.\ntargetPaybackMonths: the pilot price should stay at or under this many months of client value.\ndepositPct: share of the pilot price due to start (0.5 means 50%).\nretainerRate, monthlyTools, and the Essentials / Standard / Growth hours and discounts: monthly retainer table.\nfirstYearTier: which retainer tier is used in the first year view (Essentials, Standard or Growth).\nsignature and subjectPrefix: used in the email.\nspreadsheetId and sheetName: Google Sheet that receives the log rows."
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Code-node port of the AI Automation ROI, Pricing & Retainer Calculator formulas.\n * Estimates only. Same arithmetic as the free spreadsheet's Calculator tab.\n */\n'use strict';\n\nfunction asNumber(value, fallback) {\n  if (value == null || value === '') return fallback;\n  if (typeof value === 'number' && Number.isFinite(value)) return value;\n  const n = parseFloat(String(value).replace(/,/g, '').replace(/%/g, ''));\n  return Number.isFinite(n) ? n : fallback;\n}\n\nfunction roundUpTo(value, multiple) {\n  if (value <= 0) return 0;\n  return Math.ceil(value / multiple) * multiple;\n}\n\nfunction money(n) {\n  const v = Math.round(n * 100) / 100;\n  const sign = v < 0 ? '-' : '';\n  const abs = Math.abs(v);\n  const [int, frac] = abs.toFixed(2).split('.');\n  const withCommas = int.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\n  return `${sign}$${withCommas}.${frac}`;\n}\n\nfunction monthsLabel(n) {\n  if (n == null || n === 'n/a') return 'n/a';\n  const v = Math.round(n * 100) / 100;\n  return `${v} month${v === 1 ? '' : 's'}`;\n}\n\n/**\n * cfg: operator rates from the Config node.\n * src: client inputs from the form (or a flat test object).\n */\nfunction estimate(src, cfg) {\n  const name = String(src.name ?? src['Your name'] ?? '').trim();\n  const email = String(src.email ?? src.Email ?? '').trim().toLowerCase();\n  const company = String(src.company ?? src.Company ?? '').trim();\n  const process = String(src.process ?? src['Process to automate'] ?? '').trim();\n\n  if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {\n    throw new Error(`Invalid or missing \"email\": ${JSON.stringify({ name, email })}`);\n  }\n\n  const tasksPerWeek = asNumber(src.tasksPerWeek ?? src['Tasks per week'], NaN);\n  const minutesToday = asNumber(src.minutesToday ?? src['Minutes per task today'], NaN);\n  const minutesAfter = asNumber(src.minutesAfter ?? src['Minutes still spent per task after automation'], NaN);\n  const hourlyCost = asNumber(src.hourlyCost ?? src['Hourly cost of the person doing it now'], NaN);\n  const otherMonthlySavings = asNumber(src.otherMonthlySavings ?? src['Other monthly savings (optional)'], 0);\n\n  if (!Number.isFinite(tasksPerWeek) || tasksPerWeek < 0) {\n    throw new Error('Tasks per week must be a number 0 or greater.');\n  }\n  if (!Number.isFinite(minutesToday) || minutesToday < 0) {\n    throw new Error('Minutes per task today must be a number 0 or greater.');\n  }\n  if (!Number.isFinite(minutesAfter) || minutesAfter < 0) {\n    throw new Error('Minutes still spent per task after automation must be a number 0 or greater.');\n  }\n  if (!Number.isFinite(hourlyCost) || hourlyCost < 0) {\n    throw new Error('Hourly cost of the person doing it now must be a number 0 or greater.');\n  }\n\n  const workingWeeksPerYear = asNumber(cfg.workingWeeksPerYear, 48);\n  const buildHours = asNumber(cfg.buildHours, 16);\n  const hourlyRate = asNumber(cfg.hourlyRate, 75);\n  const riskBuffer = asNumber(cfg.riskBuffer, 0.25);\n  const toolCosts = asNumber(cfg.toolCosts, 40);\n  const targetPaybackMonths = asNumber(cfg.targetPaybackMonths, 3);\n  const depositPct = asNumber(cfg.depositPct, 0.5);\n  const retainerRate = asNumber(cfg.retainerRate, 75);\n  const monthlyTools = asNumber(cfg.monthlyTools, 20);\n  const firstYearTier = String(cfg.firstYearTier || 'Standard');\n\n  const hoursSavedPerWeek = Math.max(0, tasksPerWeek * (minutesToday - minutesAfter) / 60);\n  const hoursSavedPerMonth = hoursSavedPerWeek * workingWeeksPerYear / 12;\n  const valuePerMonth = hoursSavedPerMonth * hourlyCost + otherMonthlySavings;\n  const valuePerYear = valuePerMonth * 12;\n\n  const costBasedPrice = buildHours * hourlyRate * (1 + riskBuffer) + toolCosts;\n  const suggestedPilotPrice = roundUpTo(costBasedPrice, 50);\n  const valueCeiling = valuePerMonth * targetPaybackMonths;\n  const clientPayback = valuePerMonth > 0 ? suggestedPilotPrice / valuePerMonth : 'n/a';\n  let paybackCheck;\n  if (valuePerMonth <= 0) paybackCheck = \"Enter the client's numbers above\";\n  else if (suggestedPilotPrice <= valueCeiling) paybackCheck = 'OK: within target payback';\n  else paybackCheck = 'Over target payback: shrink the scope or confirm the value';\n  const depositDue = suggestedPilotPrice * depositPct;\n  const balanceDue = suggestedPilotPrice - depositDue;\n  const effectiveHourly = buildHours > 0 ? (suggestedPilotPrice - toolCosts) / buildHours : 0;\n\n  const tierDefs = [\n    { name: 'Essentials', hours: asNumber(cfg.essentialsHours, 2), discount: asNumber(cfg.essentialsDiscount, 0), response: '2 business days' },\n    { name: 'Standard', hours: asNumber(cfg.standardHours, 4), discount: asNumber(cfg.standardDiscount, 0.05), response: '1 business day' },\n    { name: 'Growth', hours: asNumber(cfg.growthHours, 8), discount: asNumber(cfg.growthDiscount, 0.10), response: 'Same business day' },\n  ];\n  const tiers = tierDefs.map((t) => {\n    const monthlyPrice = roundUpTo(t.hours * retainerRate * (1 - t.discount) + monthlyTools, 25);\n    const shareOfValue = valuePerMonth > 0 ? monthlyPrice / valuePerMonth : 'n/a';\n    const netMonthlyValue = valuePerMonth - monthlyPrice;\n    let flag = '';\n    if (valuePerMonth > 0) {\n      flag = monthlyPrice > valuePerMonth * 0.5\n        ? \"Check: over half the client's monthly value\"\n        : 'OK';\n    }\n    return { ...t, monthlyPrice, shareOfValue, netMonthlyValue, flag };\n  });\n\n  const chosen = tiers.find((t) => t.name.toLowerCase() === firstYearTier.toLowerCase()) || tiers[1];\n  const firstYearCost = suggestedPilotPrice + 11 * chosen.monthlyPrice;\n  const valueOver11Months = valuePerMonth * 11;\n  const returnMultiple = firstYearCost > 0 ? valueOver11Months / firstYearCost : 0;\n  let firstYearCheck = '';\n  if (firstYearCost > 0) {\n    firstYearCheck = returnMultiple >= 1\n      ? 'Estimated value exceeds year-one cost'\n      : 'Estimated value is below year-one cost: rethink scope or tier';\n  }\n\n  const firstName = name.split(/\\s+/)[0] || 'there';\n  const companyBit = company ? ` for ${company}` : '';\n  const processBit = process ? `Process you described: ${process}\\n\\n` : '';\n\n  const tierLines = tiers.map((t) => {\n    const share = t.shareOfValue === 'n/a' ? 'n/a' : `${Math.round(t.shareOfValue * 100)}% of monthly value`;\n    return `${t.name}: ${money(t.monthlyPrice)} / month (${t.hours} hours, ${Math.round(t.discount * 100)}% off the hourly rate, ${t.response}). ${share}. ${t.flag}`.trim();\n  }).join('\\n');\n\n  const disclaimer = 'These figures are estimates only. They depend entirely on the numbers entered and are not a forecast or guarantee of savings, revenue or income, and not a formal quote, proposal, or financial, tax or legal advice.';\n\n  const emailBody =\n    `Hi ${firstName},\\n\\n` +\n    `Thanks for sharing the numbers${companyBit}. Here is an estimate based on what you entered, using a published cost based pricing model. ${disclaimer}\\n\\n` +\n    processBit +\n    `Client value (estimate)\\n` +\n    `Hours saved per week: ${Math.round(hoursSavedPerWeek * 100) / 100}\\n` +\n    `Hours saved per month: ${Math.round(hoursSavedPerMonth * 100) / 100}\\n` +\n    `Estimated value per month: ${money(valuePerMonth)}\\n` +\n    `Estimated value per year: ${money(valuePerYear)}\\n\\n` +\n    `Suggested pilot\\n` +\n    `Cost based price: ${money(costBasedPrice)}\\n` +\n    `Suggested pilot price (rounded up to $50): ${money(suggestedPilotPrice)}\\n` +\n    `Value ceiling (${targetPaybackMonths} months of value): ${money(valueCeiling)}\\n` +\n    `Client payback on the pilot: ${monthsLabel(clientPayback)}\\n` +\n    `Check: ${paybackCheck}\\n` +\n    `Deposit to start (${Math.round(depositPct * 100)}%): ${money(depositDue)}\\n` +\n    `Balance due on acceptance: ${money(balanceDue)}\\n\\n` +\n    `Monthly retainer options after handover\\n` +\n    `${tierLines}\\n\\n` +\n    `First year view (${chosen.name} retainer)\\n` +\n    `Pilot plus 11 months of retainer: ${money(firstYearCost)}\\n` +\n    `Estimated value over those 11 months: ${money(valueOver11Months)}\\n` +\n    `Estimated return (value ÷ cost): ${Math.round(returnMultiple * 100) / 100}x\\n` +\n    `Check: ${firstYearCheck}\\n\\n` +\n    (cfg.signature || 'Best,\\nYour Name\\nYour Company');\n\n  const completionTitle = paybackCheck.startsWith('OK')\n    ? 'Your estimate is ready'\n    : 'Your estimate is ready (please read the payback check)';\n  const completionMessage =\n    `Estimated value per month: ${money(valuePerMonth)}\\n` +\n    `Suggested pilot price: ${money(suggestedPilotPrice)}\\n` +\n    `Payback: ${monthsLabel(clientPayback)}\\n` +\n    `Check: ${paybackCheck}\\n\\n` +\n    `We will also email a copy to ${email}. ${disclaimer}`;\n\n  const subjectPrefix = cfg.subjectPrefix || 'Your automation estimate';\n  const subject = company ? `${subjectPrefix} (${company})` : subjectPrefix;\n\n  return {\n    name,\n    firstName,\n    email,\n    company,\n    process,\n    tasksPerWeek,\n    minutesToday,\n    minutesAfter,\n    hourlyCost,\n    otherMonthlySavings,\n    hoursSavedPerWeek,\n    hoursSavedPerMonth,\n    valuePerMonth,\n    valuePerYear,\n    costBasedPrice,\n    suggestedPilotPrice,\n    valueCeiling,\n    clientPayback,\n    paybackCheck,\n    depositDue,\n    balanceDue,\n    effectiveHourly,\n    tiers,\n    firstYearTier: chosen.name,\n    firstYearCost,\n    valueOver11Months,\n    returnMultiple,\n    firstYearCheck,\n    subject,\n    emailBody,\n    completionTitle,\n    completionMessage,\n    receivedAt: new Date().toISOString(),\n  };\n}\n\nconst cfg = $('Config').first().json;\nconst out = [];\nfor (const item of $input.all()) {\n  const src = item.json.body ?? item.json;\n  out.push({ json: estimate(src, cfg) });\n}\nreturn out;\n"
+      },
+      "id": "3047bebd-ce0f-4deb-aa65-d0a446b0b718",
+      "name": "Validate and Estimate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.emailBody }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "2a9f0b95-39a1-45cf-83e2-687961ff81e4",
+      "name": "Send Estimate (Gmail)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1400,
+        320
+      ],
+      "webhookId": "fea86819-d502-4ffa-987d-8c0d7048cdf8",
+      "notes": "Connect your Gmail OAuth2 credential. Prefer SMTP? Swap for the Send Email node and map the same three fields."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "include": "none",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "64d8bf62-77ea-4268-b84f-6104d23ec13e",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "c5cfc664-21ed-4d62-ab95-026077498601",
+              "name": "receivedAt",
+              "value": "={{ $json.receivedAt }}",
+              "type": "string"
+            },
+            {
+              "id": "3d4127b6-09a3-42ae-a188-a83be10ce56a",
+              "name": "name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "92bd60b6-617b-489e-9618-983ba60c9a43",
+              "name": "email",
+              "value": "={{ $json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "3b09c86b-7364-4206-8743-fdc0dcfbe7ad",
+              "name": "company",
+              "value": "={{ $json.company }}",
+              "type": "string"
+            },
+            {
+              "id": "4f3a4e53-55c5-4685-b3fc-739e5e968b51",
+              "name": "process",
+              "value": "={{ $json.process }}",
+              "type": "string"
+            },
+            {
+              "id": "895b221c-3059-4319-85c2-c21b9370a97e",
+              "name": "valuePerMonth",
+              "value": "={{ $json.valuePerMonth }}",
+              "type": "number"
+            },
+            {
+              "id": "16cf7433-3194-4e21-a68d-cca3ba259433",
+              "name": "suggestedPilotPrice",
+              "value": "={{ $json.suggestedPilotPrice }}",
+              "type": "number"
+            },
+            {
+              "id": "884720d9-498e-409a-875a-65761e14b015",
+              "name": "paybackCheck",
+              "value": "={{ $json.paybackCheck }}",
+              "type": "string"
+            },
+            {
+              "id": "abf56f5d-54a5-48fb-a536-6e27bb4223e3",
+              "name": "firstYearCost",
+              "value": "={{ $json.firstYearCost }}",
+              "type": "number"
+            },
+            {
+              "id": "9f624813-331a-411e-bd9b-338b862f49a0",
+              "name": "completionTitle",
+              "value": "={{ $json.completionTitle }}",
+              "type": "string"
+            },
+            {
+              "id": "20e869cc-01d1-4593-8cff-1b084b3aba8d",
+              "name": "completionMessage",
+              "value": "={{ $json.completionMessage }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "97bca798-5bec-48c5-974b-f7ef157e79db",
+      "name": "Prepare Log Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "4e8fb37e-e5c0-4ccd-9295-2576cc644968",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1960,
+        320
+      ],
+      "notes": "Connect Google Sheets OAuth2. Spreadsheet ID and tab come from Config. Header row: timestamp, receivedAt, name, email, company, process, valuePerMonth, suggestedPilotPrice, paybackCheck, firstYearCost"
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "respondWith": "text",
+        "completionTitle": "={{ $json.completionTitle }}",
+        "completionMessage": "={{ $json.completionMessage }}",
+        "options": {}
+      },
+      "id": "8778dd54-df56-4752-b067-18abc10b30ba",
+      "name": "Show Estimate on Form",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        2280,
+        320
+      ]
+    }
+  ],
+  "connections": {
+    "Request Form": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Validate and Estimate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Estimate": {
+      "main": [
+        [
+          {
+            "node": "Send Estimate (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Estimate (Gmail)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Row": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append to Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Show Estimate on Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

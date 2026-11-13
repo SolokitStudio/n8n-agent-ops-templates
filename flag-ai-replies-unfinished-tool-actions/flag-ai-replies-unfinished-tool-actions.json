@@ -1,0 +1,457 @@
+{
+  "name": "Flag AI replies in Slack when tool actions did not finish",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Flag AI replies in Slack when tool actions did not finish\n\n### How it works\nFor teams whose AI agents send, refund, book or delete things and then tell the customer it is done. A webhook receives the agent's final reply plus the tool results from the same run: a tool log, or a saved n8n execution with a node map. A Code node, with no AI key, finds completed action claims such as sent, refunded, booked or all set, grades each tool result, and compares them. A claim needs a finished result with a provider id (grade S3). Wording such as delivered needs a later check (S4). Unsupported pay or delete claims are marked stop-ship. Gaps are posted to Slack for a person to review. Every check is added to a Google Sheet. Future tense and negated wording are not treated as claims.\n\nLimits: this checks a finished reply; it does not recall a message already sent. Targets are only as good as the tool log or node map. Only the first output item of each node run is read. Replies with no completed action verbs pass.\n\n### Setup\n1. In Config, set the Slack Incoming Webhook URL, spreadsheet ID, sheet name and the default node map.\n2. Connect Google Sheets OAuth2 on Append to Google Sheet.\n3. Add this header row to the sheet tab: timestamp, receivedAt, source, verdict, stopShip, claims, gaps, gapRate, reply, report.\n4. Activate, POST a test payload to `/webhook/say-do-check`, and confirm the JSON response. For a gap case, also check Slack and the new sheet row.\n\n### Customization\nEdit `notifyOn` in Config (`gaps`, `stop_ship` or `always`). Change the default node map to match your agent workflow. Call this webhook from the workflow that runs your agent, after the agent node finishes.",
+        "height": 980,
+        "width": 560
+      },
+      "id": "f90cdd6c-68d8-4774-8a7e-0ae591cfabe1",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -620,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Receive and check\nThe webhook accepts a reply plus a tool log, or a saved execution plus a node map. All user values live in Config.",
+        "height": 360,
+        "width": 1040,
+        "color": 7
+      },
+      "id": "aaa3a85a-dcbf-422d-a7a1-d1acc3920c41",
+      "name": "Section: Receive and check",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Return the verdict\nResponds with pass, review or stop_ship, the findings and the text report, so a calling workflow can hold a send.",
+        "height": 360,
+        "width": 440,
+        "color": 7
+      },
+      "id": "068e4593-5951-45a1-a14a-e00c69143e15",
+      "name": "Section: Return the verdict",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## This is a check, not a recall\nIt flags a finished reply. It cannot pull back a message that already went out. Run it before you send.",
+        "height": 260,
+        "width": 280,
+        "color": 3
+      },
+      "id": "6a91a261-4d8a-44fc-b6e2-93f5a8bda85d",
+      "name": "Warning: This does not unsay a sent message",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Review gaps in Slack\nPosts only when Config.notifyOn matches (gaps by default, or stop_ship, or always).",
+        "height": 360,
+        "width": 440,
+        "color": 7
+      },
+      "id": "74701a8d-df29-4c45-84d8-e3cdaab8b7a4",
+      "name": "Section: Review gaps in Slack",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Log every check\nAdds one row per request: pass, review or stop_ship, with the report text.",
+        "height": 680,
+        "width": 520,
+        "color": 7
+      },
+      "id": "502fa032-d3b1-4b23-8688-0de95c83c0b2",
+      "name": "Section: Log every check",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2120,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "say-do-check",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "16057900-62ee-4e69-9131-a701a2f22ea3",
+      "name": "Check Request Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        320
+      ],
+      "webhookId": "a67ccaca-3846-45c3-89d7-7fec62d59365"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "include": "all",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ba87ef7d-ea74-43d7-abfd-3f509d49060c",
+              "name": "slackWebhookUrl",
+              "value": "REPLACE_WITH_SLACK_INCOMING_WEBHOOK_URL",
+              "type": "string"
+            },
+            {
+              "id": "bc839473-5cb0-4f9b-a1ab-8893b7cf40f8",
+              "name": "spreadsheetId",
+              "value": "REPLACE_WITH_SPREADSHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "bf2c3eb4-a94a-4ea8-a462-7fb85d5278be",
+              "name": "sheetName",
+              "value": "Log",
+              "type": "string"
+            },
+            {
+              "id": "245f07e6-0914-439d-89fe-f8fc0752ce59",
+              "name": "notifyOn",
+              "value": "gaps",
+              "type": "string"
+            },
+            {
+              "id": "85132e5a-6c95-4709-b419-a8082d935d4b",
+              "name": "sourceLabel",
+              "value": "agent",
+              "type": "string"
+            },
+            {
+              "id": "0015fc92-ad56-4f86-9666-d3bcd55f49e5",
+              "name": "defaultNodeMap",
+              "value": "{\"reply\": {\"node\": \"AI Agent\", \"field\": \"output\"}, \"nodes\": {\"Send Proposal (Gmail)\": {\"tool\": \"gmail.send\", \"action\": \"send\", \"target_value\": \"dana@acme.com\", \"id\": \"id\"}, \"Create Demo Event\": {\"tool\": \"gcal.create\", \"action\": \"book\", \"target\": \"summary\", \"id\": \"id\"}, \"Refund (HTTP Request)\": {\"tool\": \"stripe.refund\", \"action\": \"pay\", \"target_value\": \"order 88412\", \"id\": \"id\", \"status\": \"status\", \"amount\": \"amount_usd\"}}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3730f41b-7a25-4208-aa8b-3e08c817ff5c",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        320
+      ],
+      "notes": "Edit these values before activating.\nslackWebhookUrl: Slack Incoming Webhook URL for your review channel (keep it private).\nspreadsheetId: the ID from your Google Sheet URL.\nsheetName: tab that receives the log rows.\nnotifyOn: when to post to Slack. Use gaps (any unsupported claim), stop_ship (only pay or delete gaps), or always.\nsourceLabel: written to the sheet when the payload has no source field.\ndefaultNodeMap: JSON that names the reply node and each action node, used when the payload sends an n8n execution and no nodeMap of its own. See Setup for the shape."
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Code-node port of Say-Do Diff (saydo_diff.core + examples/n8n/n8n_to_log).\n * Standard JavaScript only. Read-only: reports gaps, never edits a reply.\n *\n * Evidence grades (lowest to highest, plus failed):\n *   S0  no tool call recorded for the claim\n *   S1  call made, but error / timeout / unknown result\n *   S2  accepted or queued, or \"done\" with no object id\n *   S3  done, with an object id (message id, event id, charge id)\n *   S4  verified afterwards (delivered webhook, read-back)\n *   F   provider reported failure (bounce, 4xx/5xx, payment_failed)\n */\n'use strict';\n\nconst RANK = { F: -1, S0: 0, S1: 1, S2: 2, S3: 3, S4: 4 };\n\nconst VERBS = {\n  send: ['sent', 'emailed', 'mailed', 'forwarded', 'texted', 'messaged', 'notified', 'replied', 'submitted', 'invited', 'shared'],\n  create: ['created', 'added', 'opened', 'logged', 'filed', 'registered', 'saved', 'uploaded', 'generated'],\n  update: ['updated', 'changed', 'edited', 'modified', 'marked', 'moved', 'renamed', 'assigned', 'closed', 'resolved', 'archived', 'merged', 'approved', 'enabled', 'disabled'],\n  delete: ['deleted', 'removed', 'erased', 'purged', 'wiped'],\n  book: ['booked', 'scheduled', 'reserved', 'rescheduled'],\n  pay: ['paid', 'refunded', 'charged', 'transferred', 'reimbursed', 'credited', 'wired', 'invoiced'],\n  post: ['posted', 'published', 'tweeted', 'deployed', 'released'],\n  cancel: ['canceled', 'cancelled', 'unsubscribed', 'revoked', 'voided'],\n};\nconst VERIFIED_WORDS = new Set(['delivered', 'confirmed', 'verified', 'settled']);\nconst FORM_TO_ACTION = {};\nfor (const [action, forms] of Object.entries(VERBS)) {\n  for (const form of forms) FORM_TO_ACTION[form] = action;\n}\nFORM_TO_ACTION.delivered = 'send';\nFORM_TO_ACTION.settled = 'pay';\n\nconst UMBRELLA = [\n  'all set', 'all done', 'taken care of', 'took care of', 'good to go', 'squared away',\n  'everything is done', 'everything is complete', 'everything is in place', \"you're set\",\n  'you are set', 'wrapped up',\n];\nconst BLOCKERS = new Set([\n  'will', \"i'll\", \"we'll\", 'shall', 'going', 'gonna', 'plan', 'planning', 'about', 'can', 'could',\n  'should', 'would', 'might', 'may', 'must', 'let', 'want', 'ready', 'need', 'needs', 'if', 'unless',\n  'once', 'when', 'whether', 'try', 'trying', 'not', 'never', \"didn't\", \"haven't\", \"hasn't\",\n  \"wasn't\", \"weren't\", \"isn't\", \"aren't\", \"couldn't\", \"won't\", 'yet', 'you', 'they', 'he', 'she',\n]);\nconst NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, both: 2 };\n\nconst FAILED = new Set(['failed', 'failure', 'error', 'bounced', 'bounce', 'dropped', 'rejected', 'declined', 'payment_failed', 'canceled_by_provider']);\nconst ATTEMPTED = new Set(['timeout', 'timed_out', 'unknown', 'attempted', 'no_response']);\nconst ACCEPTED = new Set(['accepted', 'queued', 'pending', 'processing', 'scheduled_send', 'in_progress']);\nconst DONE = new Set(['done', 'ok', 'success', 'succeeded', 'sent', 'created', 'completed', 'booked', 'paid']);\nconst VERIFIED = new Set(['verified', 'delivered', 'confirmed', 'settled', 'read_back']);\n\nconst EMAIL_RE = /[\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+/g;\nconst MONEY_RE = /[$€£]\\s?(\\d[\\d,]*(?:\\.\\d+)?)/g;\nconst ID_RE = /(?<![$\\w.])#?(\\d{3,})(?!\\w|\\.\\d)/g;\nconst QUOTED_RE = /[\"“']([^\"”']{2,60})[\"”']/g;\nconst COUNT_RE = new RegExp('\\\\b(?:all\\\\s+)?(\\\\d+|' + Object.keys(NUMBER_WORDS).join('|') + ')\\\\s+(?:of\\\\s+the\\\\s+)?[a-z]+s\\\\b', 'i');\nconst WORD_RE = /[A-Za-z']+|\\u2705/g;\n\nfunction gradeCall(call) {\n  const g = String(call.grade || '').toUpperCase();\n  if (Object.prototype.hasOwnProperty.call(RANK, g)) return g;\n  const status = String(call.status || '').toLowerCase().trim();\n  const http = call.http_status;\n  const hasId = Boolean(call.id || call.object_id);\n  if (FAILED.has(status) || (typeof http === 'number' && http >= 400)) return 'F';\n  if (call.error || ATTEMPTED.has(status)) return 'S1';\n  if (VERIFIED.has(status) || call.verified === true) return 'S4';\n  if (ACCEPTED.has(status) || http === 202) return 'S2';\n  if (DONE.has(status) || (typeof http === 'number' && http >= 200 && http < 300)) return hasId ? 'S3' : 'S2';\n  return 'S1';\n}\n\nfunction loadLog(source) {\n  let data;\n  if (Array.isArray(source)) data = source;\n  else if (source && typeof source === 'object') data = source.calls || [];\n  else {\n    let text = source == null ? '' : String(source).trim();\n    if (!text) data = [];\n    else {\n      try { data = JSON.parse(text); }\n      catch {\n        data = text.split(/\\n/).filter((l) => l.trim()).map((l) => JSON.parse(l));\n      }\n      if (data && typeof data === 'object' && !Array.isArray(data)) data = data.calls || [];\n    }\n  }\n  return (data || []).map((c, i) => {\n    const call = { ...c };\n    if (call.action == null) call.action = '';\n    call._grade = gradeCall(call);\n    call._i = i;\n    return call;\n  });\n}\n\nfunction targetText(call) {\n  let t = call.target || '';\n  if (t && typeof t === 'object') t = Object.values(t).join(' ');\n  return `${t} ${call.id || ''} ${call.object_id || ''}`.toLowerCase();\n}\n\nfunction sentences(text) {\n  return String(text || '').trim().split(/(?<=[.!?])\\s+|\\n+/).map((p) => p.trim()).filter(Boolean);\n}\n\nfunction numTok(tok) {\n  return /^\\d+$/.test(tok) ? parseInt(tok, 10) : NUMBER_WORDS[String(tok).toLowerCase()];\n}\n\nfunction allMatches(re, text) {\n  const out = [];\n  const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');\n  let m;\n  while ((m = r.exec(text))) out.push(m);\n  return out;\n}\n\nfunction extractClaims(text) {\n  const claims = [];\n  for (const sent of sentences(text)) {\n    const low = sent.toLowerCase();\n    const words = allMatches(WORD_RE, sent);\n    const hits = [];\n    words.forEach((m, i) => {\n      if (FORM_TO_ACTION[m[0].toLowerCase()]) hits.push([i, m]);\n    });\n    hits.forEach(([i, m], n) => {\n      const startWord = n ? hits[n - 1][0] + 1 : 0;\n      const prefix = words.slice(startWord, i).map((w) => w[0].toLowerCase()).slice(-4);\n      if (prefix.some((p) => BLOCKERS.has(p))) return;\n      const end = n + 1 < hits.length ? hits[n + 1][1].index : sent.length;\n      const clause = sent.slice(m.index, end);\n      const verb = m[0].toLowerCase();\n      const action = FORM_TO_ACTION[verb];\n      const needs = (VERIFIED_WORDS.has(verb) || /\\b(delivered|confirmed|verified)\\b/i.test(clause)) ? 'S4' : 'S3';\n      const targets = allMatches(EMAIL_RE, clause).map((e) => e[0].toLowerCase());\n      targets.push(...allMatches(QUOTED_RE, clause).map((q) => q[1].toLowerCase()));\n      const stripped = clause.replace(EMAIL_RE, ' ').replace(MONEY_RE, ' ');\n      targets.push(...allMatches(ID_RE, stripped).map((id) => id[1]));\n      const money = new RegExp(MONEY_RE.source).exec(clause);\n      const cm = COUNT_RE.exec(clause);\n      claims.push({\n        sentence: sent,\n        verb,\n        action,\n        needs,\n        targets,\n        amount: money ? parseFloat(money[1].replace(/,/g, '')) : null,\n        count: cm ? numTok(cm[1]) : null,\n        umbrella: false,\n      });\n    });\n    if (UMBRELLA.some((u) => low.includes(u)) || sent.includes('\\u2705')) {\n      claims.push({ sentence: sent, verb: '(umbrella)', action: '*', needs: 'S3', targets: [], amount: null, count: null, umbrella: true });\n    }\n  }\n  return claims;\n}\n\nfunction bestGrade(calls) {\n  if (!calls.length) return 'S0';\n  let g = calls[0]._grade;\n  for (const c of calls.slice(1)) {\n    if (RANK[c._grade] > RANK[g]) g = c._grade;\n  }\n  return g;\n}\n\nfunction why(calls, grade) {\n  for (const c of calls) {\n    if (c._grade === grade && c.note) return ` (${c.note})`;\n  }\n  return '';\n}\n\nfunction stableTarget(target) {\n  if (target && typeof target === 'object') {\n    const keys = Object.keys(target).sort();\n    const o = {};\n    for (const k of keys) o[k] = target[k];\n    return JSON.stringify(o);\n  }\n  return JSON.stringify(target);\n}\n\nfunction checkClaim(claim, calls) {\n  if (claim.umbrella) {\n    if (!calls.length) return { claim, status: 'gap', grade: 'S0', reason: 'umbrella claim, but the log has no tool calls', calls: [] };\n    let live = calls.filter((c) => !c.informational && !c.superseded);\n    if (!live.length) return { claim, status: 'gap', grade: 'S0', reason: 'umbrella claim, but the log has only read-only lookups', calls: [] };\n    const weak = live.filter((c) => RANK[c._grade] < 3);\n    if (weak.length) {\n      const names = weak.map((c) => `${c.tool || '?'} (${c._grade})`).join(', ');\n      return { claim, status: 'gap', grade: bestGrade(weak), reason: `umbrella claim, but these calls are below S3: ${names}`, calls: weak.map((c) => c._i) };\n    }\n    return { claim, status: 'ok', grade: bestGrade(live), reason: 'every call in the log is S3 or better', calls: live.map((c) => c._i) };\n  }\n  const same = calls.filter((c) => c.action === claim.action);\n  if (!same.length) return { claim, status: 'gap', grade: 'S0', reason: `no '${claim.action}' call in the log`, calls: [] };\n  let matched = same;\n  if (claim.targets && claim.targets.length) {\n    matched = same.filter((c) => claim.targets.some((t) => targetText(c).includes(t)));\n    for (const c of same) {\n      if (c.target_unknown && !matched.includes(c)) matched.push(c);\n    }\n    if (!matched.length) {\n      const seen = [...new Set(same.map((c) => targetText(c).trim() || '?'))].sort().join(', ');\n      return { claim, status: 'gap', grade: 'S0', reason: `wrong target: claim names ${claim.targets}, log has '${claim.action}' for: ${seen}`, calls: [] };\n    }\n  }\n  const grade = bestGrade(matched);\n  const ids = matched.map((c) => c._i);\n  if (claim.amount != null) {\n    const amounts = new Set(matched.filter((c) => c.amount != null).map((c) => parseFloat(c.amount)));\n    if (amounts.size && !amounts.has(claim.amount)) {\n      const shown = [...amounts].sort((a, b) => a - b).map(String).join(', ');\n      return { claim, status: 'gap', grade, reason: `amount mismatch: claim says ${claim.amount}, log shows ${shown}`, calls: ids };\n    }\n  }\n  if (claim.count) {\n    const good = new Set(matched.filter((c) => RANK[c._grade] >= RANK[claim.needs]).map((c) => stableTarget(c.target)));\n    if (good.size < claim.count) {\n      return { claim, status: 'gap', grade, reason: `partial batch: ${good.size} of ${claim.count} reached ${claim.needs}`, calls: ids };\n    }\n    return { claim, status: 'ok', grade, reason: `${good.size} of ${claim.count} reached ${claim.needs}`, calls: ids };\n  }\n  if (RANK[grade] < RANK[claim.needs]) {\n    return { claim, status: 'gap', grade, reason: `wording needs ${claim.needs}, best evidence is ${grade}` + why(matched, grade), calls: ids };\n  }\n  return { claim, status: 'ok', grade, reason: `supported at ${grade}`, calls: ids };\n}\n\nfunction findDuplicates(calls) {\n  const groups = new Map();\n  for (const c of calls) {\n    if (RANK[c._grade] < 2 || c.repeat_ok || c.informational) continue;\n    const key = JSON.stringify([c.tool, c.action, stableTarget(c.target)]);\n    if (!groups.has(key)) groups.set(key, []);\n    groups.get(key).push(c);\n  }\n  const dupes = [];\n  for (const [key, group] of groups) {\n    const keys = new Set(group.map((c) => c.idempotency_key));\n    if (group.length > 1 && (keys.has(undefined) || keys.has(null) || keys.size > 1)) {\n      const [tool, action, target] = JSON.parse(key);\n      dupes.push({ tool, action, target: JSON.parse(target), calls: group.map((c) => c._i) });\n    }\n  }\n  return dupes;\n}\n\nfunction findingToDict(f) {\n  return {\n    claim: { ...f.claim },\n    status: f.status,\n    grade: f.grade,\n    reason: f.reason,\n    calls: f.calls,\n  };\n}\n\nfunction toText(findings, duplicates, stopShip) {\n  const lines = [];\n  for (const f of findings) {\n    const mark = f.status === 'gap' ? 'GAP' : 'ok ';\n    const verb = String(f.claim.verb).padEnd(11);\n    const grade = String(f.grade).padEnd(2);\n    lines.push(`[${mark}] ${verb} ${grade}  ${f.reason}`);\n    lines.push(`       \"${f.claim.sentence}\"`);\n  }\n  for (const d of duplicates) {\n    lines.push(`[DUP] ${d.tool} ${d.action} ${d.target} logged ${d.calls.length} times without one idempotency key (entries ${d.calls})`);\n  }\n  const gaps = findings.filter((f) => f.status === 'gap');\n  const rate = findings.length ? gaps.length / findings.length : 0;\n  lines.push('');\n  lines.push(`${gaps.length} gap(s) in ${findings.length} claim(s), gap rate ${Math.round(rate * 100)}%` +\n    (stopShip ? '  STOP-SHIP: a payment or delete claim is unsupported' : ''));\n  return lines.join('\\n');\n}\n\nfunction diff(message, log) {\n  const calls = loadLog(log);\n  const findings = extractClaims(message).map((c) => checkClaim(c, calls));\n  const duplicates = findDuplicates(calls);\n  const gaps = findings.filter((f) => f.status === 'gap');\n  const stopShip = gaps.some((f) => f.claim.action === 'pay' || f.claim.action === 'delete');\n  const gapRate = findings.length ? gaps.length / findings.length : 0;\n  return {\n    findings,\n    duplicates,\n    calls,\n    gaps,\n    stop_ship: stopShip,\n    gap_rate: gapRate,\n    claims: findings.length,\n    report: toText(findings, duplicates, stopShip),\n  };\n}\n\nfunction dig(obj, path) {\n  if (!path) return undefined;\n  let cur = obj;\n  for (const part of String(path).split('.')) {\n    if (cur == null || typeof cur !== 'object' || !(part in cur)) return undefined;\n    cur = cur[part];\n  }\n  return cur;\n}\n\nfunction firstJson(run) {\n  const data = (run && run.data) || {};\n  for (const key of ['main', 'ai_tool']) {\n    const branches = data[key] || [];\n    for (const branch of branches) {\n      for (const item of branch || []) {\n        if (item && typeof item === 'object' && item.json && typeof item.json === 'object') return item.json;\n      }\n    }\n  }\n  return {};\n}\n\nfunction toLog(execution, nodeMap) {\n  const runData = dig(execution, 'data.resultData.runData') || {};\n  const calls = [];\n  const nodes = (nodeMap && nodeMap.nodes) || {};\n  for (const [node, spec] of Object.entries(nodes)) {\n    for (const run of runData[node] || []) {\n      const out = firstJson(run);\n      const entry = { tool: spec.tool || node, action: spec.action };\n      const target = spec.target ? dig(out, spec.target) : spec.target_value;\n      if (target !== undefined && target !== null) entry.target = target;\n      for (const field of ['id', 'status', 'http_status', 'amount', 'idempotency_key']) {\n        const path = spec[field];\n        const val = path ? dig(out, path) : undefined;\n        if (val !== undefined && val !== null) entry[field] = val;\n      }\n      if (run.error || run.executionStatus === 'error') {\n        entry.error = (run.error && run.error.message) || 'node error';\n      } else if (entry.status == null) {\n        entry.status = 'done';\n      }\n      calls.push(entry);\n    }\n  }\n  return calls;\n}\n\nfunction replyText(execution, nodeMap) {\n  const spec = (nodeMap && nodeMap.reply) || {};\n  const runs = (dig(execution, 'data.resultData.runData') || {})[spec.node || ''] || [];\n  if (!runs.length) return '';\n  const val = dig(firstJson(runs[runs.length - 1]), spec.field || 'output');\n  return val == null ? '' : String(val);\n}\n\nfunction parseMaybeJson(value) {\n  if (value == null || value === '') return undefined;\n  if (typeof value === 'object') return value;\n  const s = String(value).trim();\n  if (!s) return undefined;\n  try { return JSON.parse(s); } catch { return undefined; }\n}\n\nfunction checkPayload(src, defaultNodeMap) {\n  const replyIn = src.reply != null ? String(src.reply) : (src.message != null ? String(src.message) : '');\n  const execution = src.execution || src.executionJson;\n  const nodeMap = src.nodeMap || src.node_map || defaultNodeMap;\n  let callsIn = src.calls || src.toolLog || src.tool_log;\n  let reply = replyIn;\n  if (execution && typeof execution === 'object') {\n    const mapped = toLog(execution, nodeMap || { nodes: {} });\n    if (!callsIn) callsIn = mapped;\n    if (!reply && nodeMap) reply = replyText(execution, nodeMap);\n  }\n  if (!String(reply).trim()) {\n    throw new Error('Missing \"reply\" (and no reply could be read from the execution plus node map).');\n  }\n  if (callsIn == null) {\n    throw new Error('Missing \"calls\" (or pass \"execution\" plus a node map).');\n  }\n  const report = diff(reply, callsIn);\n  let verdict = 'pass';\n  if (report.stop_ship) verdict = 'stop_ship';\n  else if (report.gaps.length) verdict = 'review';\n  return {\n    reply,\n    calls: loadLog(callsIn).map((c) => {\n      const { _grade, _i, ...rest } = c;\n      return { ...rest, grade: _grade };\n    }),\n    findings: report.findings.map(findingToDict),\n    duplicates: report.duplicates,\n    claims: report.claims,\n    gaps: report.gaps.length,\n    gapRate: Math.round(report.gap_rate * 1000) / 1000,\n    stopShip: report.stop_ship,\n    verdict,\n    report: report.report,\n  };\n}\n\nconst cfg = $('Config').first().json;\nconst defaultNodeMap = parseMaybeJson(cfg.defaultNodeMap) || { nodes: {} };\nconst notifyOn = String(cfg.notifyOn || 'gaps').toLowerCase().trim();\nconst sourceLabel = String(cfg.sourceLabel || '').trim();\n\nconst out = [];\nfor (const item of $input.all()) {\n  const src = item.json.body ?? item.json;\n  const result = checkPayload(src, defaultNodeMap);\n  const shouldNotify = notifyOn === 'always'\n    || (notifyOn === 'stop_ship' && result.stopShip)\n    || (notifyOn === 'gaps' && result.gaps > 0);\n  out.push({\n    json: {\n      ...result,\n      shouldNotify,\n      source: String(src.source || sourceLabel || 'webhook'),\n      receivedAt: new Date().toISOString(),\n    },\n  });\n}\nreturn out;\n"
+      },
+      "id": "72078a7d-14cb-419d-a7c2-cecf4525ffa0",
+      "name": "Check Claims",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ verdict: $json.verdict, stopShip: $json.stopShip, claims: $json.claims, gaps: $json.gaps, gapRate: $json.gapRate, findings: $json.findings, duplicates: $json.duplicates, report: $json.report, reply: $json.reply, source: $json.source }) }}",
+        "options": {}
+      },
+      "id": "e09c8d8b-bd87-4a71-b0fc-8f90b4e95dc5",
+      "name": "Respond with Verdict",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1180,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "44b1f032-4971-4418-9f49-9c332da5cb3b",
+              "leftValue": "={{ $json.shouldNotify }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "b169ff18-55ea-4e8a-8d9a-cf31df046476",
+      "name": "Needs Review?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1400,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').item.json.slackWebhookUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  text: ($json.stopShip ? 'STOP-SHIP: ' : 'Review needed: ') + $json.gaps + ' unsupported claim(s) in an agent reply',\n  blocks: [\n    { type: 'header', text: { type: 'plain_text', text: ($json.stopShip ? 'STOP-SHIP: claimed action did not finish' : 'Review: claimed action did not finish') } },\n    { type: 'section', fields: [\n      { type: 'mrkdwn', text: '*Verdict:*\\n' + $json.verdict },\n      { type: 'mrkdwn', text: '*Gaps:*\\n' + $json.gaps + ' of ' + $json.claims },\n      { type: 'mrkdwn', text: '*Source:*\\n' + ($json.source || 'webhook') },\n      { type: 'mrkdwn', text: '*Stop-ship:*\\n' + ($json.stopShip ? 'yes' : 'no') }\n    ] },\n    { type: 'section', text: { type: 'mrkdwn', text: '*Reply:*\\n```' + String($json.reply || '').slice(0, 2000) + '```' } },\n    { type: 'section', text: { type: 'mrkdwn', text: '*Report:*\\n```' + String($json.report || '').slice(0, 2500) + '```' } }\n  ]\n}) }}",
+        "options": {}
+      },
+      "id": "21379583-3ae7-4f42-9349-82ab64ea7848",
+      "name": "Post Gaps to Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        220
+      ],
+      "notes": "Posts to the Slack Incoming Webhook URL set in Config, so no Slack app credential is needed."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "include": "none",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e6b26630-9480-4f5e-8171-f685094e65ed",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "e558394c-bfcd-4983-b07c-3d916e034376",
+              "name": "receivedAt",
+              "value": "={{ $json.receivedAt }}",
+              "type": "string"
+            },
+            {
+              "id": "2a399821-f13a-45ab-afba-0a6cd2f5d64c",
+              "name": "source",
+              "value": "={{ $json.source }}",
+              "type": "string"
+            },
+            {
+              "id": "97c40d0e-c4a4-4e12-b15f-640d2b35e338",
+              "name": "verdict",
+              "value": "={{ $json.verdict }}",
+              "type": "string"
+            },
+            {
+              "id": "7ad6cc9b-c498-4acc-bd3d-b18463a932b1",
+              "name": "stopShip",
+              "value": "={{ $json.stopShip }}",
+              "type": "boolean"
+            },
+            {
+              "id": "6ea6b35e-3fde-45f4-97fe-d23b682c86c7",
+              "name": "claims",
+              "value": "={{ $json.claims }}",
+              "type": "number"
+            },
+            {
+              "id": "319b67b2-3523-48cd-8787-e5af720ab372",
+              "name": "gaps",
+              "value": "={{ $json.gaps }}",
+              "type": "number"
+            },
+            {
+              "id": "c945e050-b035-4eb7-8912-44fcdef61875",
+              "name": "gapRate",
+              "value": "={{ $json.gapRate }}",
+              "type": "number"
+            },
+            {
+              "id": "14e7f751-ae32-48e3-87c0-c7821e56c3dc",
+              "name": "reply",
+              "value": "={{ $json.reply }}",
+              "type": "string"
+            },
+            {
+              "id": "8258875e-dece-433d-af7d-2b6324ca5a34",
+              "name": "report",
+              "value": "={{ $json.report }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aef423dc-354d-4a8c-8d8a-974748e8f1a4",
+      "name": "Prepare Log Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2160,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.sheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "fe2496c9-5b06-4fbb-85f6-e8a3384d639a",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2420,
+        320
+      ],
+      "notes": "Connect Google Sheets OAuth2. Spreadsheet ID and tab come from Config. Header row: timestamp, receivedAt, source, verdict, stopShip, claims, gaps, gapRate, reply, report"
+    }
+  ],
+  "connections": {
+    "Check Request Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Check Claims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Claims": {
+      "main": [
+        [
+          {
+            "node": "Respond with Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond with Verdict": {
+      "main": [
+        [
+          {
+            "node": "Needs Review?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Review?": {
+      "main": [
+        [
+          {
+            "node": "Post Gaps to Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Log Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Gaps to Slack": {
+      "main": [
+        [
+          {
+            "node": "Prepare Log Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Row": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
