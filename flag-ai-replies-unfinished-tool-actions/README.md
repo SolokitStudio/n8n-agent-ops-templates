@@ -4,15 +4,15 @@ An n8n workflow that compares an AI agent's final reply with the tool results fr
 
 No AI key is required. The check is a Code node you can inspect.
 
-Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
+Version 1.1.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
 
 Support and updates: [solokit33.gumroad.com/l/n8n-agent-claim-check](https://solokit33.gumroad.com/l/n8n-agent-claim-check)
 
 ## What it does
 
 1. A **Webhook** at `POST /webhook/say-do-check` receives the agent's final `reply` plus either a `calls` tool log, or a saved n8n `execution` and a `nodeMap`.
-2. **Config** holds the Slack Incoming Webhook URL, spreadsheet ID, sheet name, when to notify (`gaps`, `stop_ship` or `always`), a source label, and a default node map.
-3. **Check Claims** finds completed action claims such as sent, refunded, booked, deleted or all set. It grades each tool result: an error or timeout is S1, a run with no provider id is S2, a finished result with an id is S3, a later delivery check is S4. A claim needs S3 unless the wording is delivered, confirmed or verified (S4). Future tense and negated wording are not treated as claims.
+2. **Config** holds the Slack Incoming Webhook URL, spreadsheet ID, sheet name, when to notify (`gaps`, `stop_ship` or `always`), a source label, a default node map, and `failureMarkers`.
+3. **Check Claims** finds completed action claims such as sent, refunded, booked, deleted or all set. It grades each tool result: an error or timeout is S1, a run with no provider id is S2, a finished result with an id is S3, a later delivery check is S4. An HTTP 200 body that reports failure (for example `ok: false`, `success: false`, `status: error` or `failed`, a present `error` field, or a nonempty `errors` list) is graded F, not finished. A claim needs S3 unless the wording is delivered, confirmed or verified (S4). Future tense and negated wording are not treated as claims.
 4. **Respond with Verdict** returns JSON: `pass`, `review` or `stop_ship`. Unsupported pay or delete claims are always `stop_ship`.
 5. When `notifyOn` matches, **Post Gaps to Slack** sends the findings through a Slack Incoming Webhook (no Slack app credential is needed).
 6. **Append to Google Sheet** writes one row per check.
@@ -34,7 +34,7 @@ The Code node is a port of the open source [Say-Do Diff](https://github.com/Solo
 ## Setup
 
 1. Import [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json) into n8n.
-2. In **Config**, set `slackWebhookUrl`, `spreadsheetId`, `sheetName`, `notifyOn`, `sourceLabel` and, if you send n8n executions, `defaultNodeMap`.
+2. In **Config**, set `slackWebhookUrl`, `spreadsheetId`, `sheetName`, `notifyOn`, `sourceLabel`, and, if you send n8n executions, `defaultNodeMap`. Edit `failureMarkers` if your APIs use other fields to mean a call did not finish. An empty list turns off body checks; HTTP 4xx or 5xx and a failed status string still count.
 3. Connect Google Sheets OAuth2 on **Append to Google Sheet**.
 4. Add this header row to the sheet tab: `timestamp, receivedAt, source, verdict, stopShip, claims, gaps, gapRate, reply, report`.
 5. Activate the workflow, POST a test payload to `/webhook/say-do-check`, then check the JSON response and, for a gap case, the Slack message and the new sheet row.
@@ -51,6 +51,8 @@ Sample payload (flat tool log):
 }
 ```
 
+A tool result with HTTP 200 and a body such as `{"ok": false}` is a gap, not a pass.
+
 You can also POST a saved n8n execution (`GET /api/v1/executions/<id>?includeData=true`) plus a `nodeMap`. A default map is in Config.
 
 ## Tested on
@@ -63,9 +65,15 @@ n8n 2.46.6 self hosted. The exact JSON was imported into a fresh, empty database
 - Future tense only ("I will send the report tomorrow..."): HTTP 200, `verdict=pass`, 0 claims, no Slack post.
 - "I deleted the old account" with no tool call: HTTP 200, `verdict=stop_ship`, Slack mock received a second stop-ship post.
 
-The Code node was also checked outside n8n against the Python Say-Do Diff tests, including the official sample execution.
+On 2026-11-14 the Code node was rerun outside n8n (the local n8n instance was not running). Existing cases still passed, including the official sample execution (2 gaps, stop-ship) and a cross-check against the Python Say-Do Diff tests. New cases also passed:
 
-Not run: real Slack delivery, real Google Sheets append, a live agent workflow calling this webhook.
+- HTTP 200 with `{ok:false}`, `{success:false}`, `{status:'error'}`, `{status:'failed'}`, a present `error` field, or a nonempty `errors` list: graded F, not finished. A refund claim with `{success:false}` is `stop_ship`.
+- HTTP 200 with `{ok:true}`, `{error:null}`, or `errors: []`, plus an id: still S3 (finished).
+- Mapping an n8n execution whose HTTP node returned 200 and `{ok:false, id:'re_1'}`: status set to error, refund claim is `stop_ship`.
+- Custom `failureMarkers` (including an empty list) override the default list as documented.
+- A top-level tool-log `error` such as a timeout stays S1, same as before.
+
+Not run: real Slack delivery, real Google Sheets append, a live agent workflow calling this webhook. The 2026-11-13 webhook cases were not repeated on a live n8n process on 2026-11-14.
 
 ## Limitations
 
@@ -77,6 +85,17 @@ Not run: real Slack delivery, real Google Sheets append, a live agent workflow c
 - An invalid payload (missing reply, or no calls and no execution) stops the run with an error before a webhook response is sent.
 - If Slack or Sheets fails after the verdict has already been returned, the caller still has the JSON result but the notify or log step may be missing.
 - No duplicate check across requests. The same payload posted twice is checked twice.
+- Unusual API bodies may need the `failureMarkers` list in Config edited. An empty list turns off body checks.
+
+## Changelog
+
+### 1.1.0 (2026-11-14, PT)
+
+A commenter on r/n8n pointed out that a tool result with HTTP 200 and a body such as `{ok:false}`, `{success:false}`, `{status:'error'}` or `{status:'failed'}`, a present `error` field, or an `errors` array was graded as finished. The check now treats those as not finished. The marker list lives in Config (`failureMarkers`) so you can add the fields your APIs use. No AI key is required.
+
+### 1.0.0 (2026-11-13, PT)
+
+First public release.
 
 ## License
 
