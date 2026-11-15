@@ -4,7 +4,7 @@ An n8n workflow that compares an AI agent's final reply with the tool results fr
 
 No AI key is required. The check is a Code node you can inspect.
 
-Version 1.1.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
+Version 1.2.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
 
 Support and updates: [solokit33.gumroad.com/l/n8n-agent-claim-check](https://solokit33.gumroad.com/l/n8n-agent-claim-check)
 
@@ -14,7 +14,7 @@ Grading saved runs in bulk for a client report: [Agent Claim Audit ($19)](https:
 
 1. A **Webhook** at `POST /webhook/say-do-check` receives the agent's final `reply` plus either a `calls` tool log, or a saved n8n `execution` and a `nodeMap`.
 2. **Config** holds the Slack Incoming Webhook URL, spreadsheet ID, sheet name, when to notify (`gaps`, `stop_ship` or `always`), a source label, a default node map, and `failureMarkers`.
-3. **Check Claims** finds completed action claims such as sent, refunded, booked, deleted or all set. It grades each tool result: an error or timeout is S1, a run with no provider id is S2, a finished result with an id is S3, a later delivery check is S4. An HTTP 200 body that reports failure (for example `ok: false`, `success: false`, `status: error` or `failed`, a present `error` field, or a nonempty `errors` list) is graded F, not finished. A claim needs S3 unless the wording is delivered, confirmed or verified (S4). Future tense and negated wording are not treated as claims.
+3. **Check Claims** finds completed action claims such as sent, refunded, booked, deleted or all set, including passive and noun phrasing such as "your refund has been processed", "the money is back on your card", "invite is out" and "got the refund issued". If the payload (or a JSON reply) includes an `actions` or `actionsDone` array such as `[{"action":"refund","status":"done"}]`, those structured claims are graded against the tool log and the verb list stays as a backstop. It grades each tool result: an error or timeout is S1, a run with no provider id is S2, a finished result with an id is S3, a later delivery check is S4. An HTTP 200 body that reports failure (for example `ok: false`, `success: false`, `status: error` or `failed`, a present `error` field, or a nonempty `errors` list) is graded F, not finished. A claim needs S3 unless the wording is delivered, confirmed or verified (S4). Future tense and negated wording are not treated as claims.
 4. **Respond with Verdict** returns JSON: `pass`, `review` or `stop_ship`. Unsupported pay or delete claims are always `stop_ship`.
 5. When `notifyOn` matches, **Post Gaps to Slack** sends the findings through a Slack Incoming Webhook (no Slack app credential is needed).
 6. **Append to Google Sheet** writes one row per check.
@@ -55,6 +55,20 @@ Sample payload (flat tool log):
 
 A tool result with HTTP 200 and a body such as `{"ok": false}` is a gap, not a pass.
 
+You can also send a structured actions list. The verb list still runs on the reply text as a backstop:
+
+```json
+{
+  "reply": "All set!",
+  "actions": [
+    {"action": "refund", "status": "done", "target": "order 88412", "amount": 45}
+  ],
+  "calls": [
+    {"tool": "stripe.refund", "action": "pay", "target": "order 88412", "amount": 45, "status": "done", "id": "re_1"}
+  ]
+}
+```
+
 You can also POST a saved n8n execution (`GET /api/v1/executions/<id>?includeData=true`) plus a `nodeMap`. A default map is in Config.
 
 ## Tested on
@@ -77,12 +91,21 @@ On 2026-11-14 the Code node was rerun outside n8n (the local n8n instance was no
 
 Not run: real Slack delivery, real Google Sheets append, a live agent workflow calling this webhook. The 2026-11-13 webhook cases were not repeated on a live n8n process on 2026-11-14.
 
+On 2026-11-15 the Code node was rerun outside n8n (the local n8n instance was not running). Existing cases still passed, including the official sample execution (2 gaps, stop-ship), the HTTP 200 body-failure cases, and a cross-check against the Python Say-Do Diff tests. New cases also passed:
+
+- "Your refund has been processed", "The money is back on your card", "Done, invite is out" and "I went ahead and got the refund issued" now extract a claim. "The order was cancelled" and "an email has been sent" already did. A processed refund with no tool call is `stop_ship`. Negated or future forms extract no claim.
+- An `actions` array such as `[{"action":"refund","status":"done"}]` is graded against the tool log. A timeout is `stop_ship`. A finished pay with an id is `pass`. A JSON reply of `{"text":"All set!","actions":[...]}` uses "All set!" as the displayed reply. The verb list still catches other claims in the text, and the same refund in both places is counted once.
+- Action aliases such as refund, email and cancel map to the same actions as the tool log. A structured `email` claim with status `delivered` needs S4.
+
+The 2026-11-13 webhook cases were not repeated on a live n8n process on 2026-11-15.
+
 ## Limitations
 
 - This checks a finished reply. It does not recall a message that already went out. Run it before you send.
 - Targets are only as good as the tool log or node map. n8n often does not store a resolved recipient, so `target_value` is sometimes a fixed string.
 - Only the first output item of each node run is read.
-- Replies with no completed action verbs pass, including future tense such as "I will send it."
+- Replies with no completed action claims pass, including future tense such as "I will send it", unless a structured `actions` list is present.
+- The verb list still misses some phrasings. Version 1.2.0 covers the passive and noun cases above; unusual wording can still pass quietly unless you send a structured actions array.
 - Anyone who can POST to the webhook can run a check. Keep the URL private or put the workflow behind authentication.
 - An invalid payload (missing reply, or no calls and no execution) stops the run with an error before a webhook response is sent.
 - If Slack or Sheets fails after the verdict has already been returned, the caller still has the JSON result but the notify or log step may be missing.
@@ -90,6 +113,10 @@ Not run: real Slack delivery, real Google Sheets append, a live agent workflow c
 - Unusual API bodies may need the `failureMarkers` list in Config edited. An empty list turns off body checks.
 
 ## Changelog
+
+### 1.2.0 (2026-11-15, PT)
+
+A commenter on r/n8n asked how claims are parsed without an LLM and whether regex holds up. Local checks confirmed silent misses on "Your refund has been processed", "The money is back on your card", "Done, invite is out" and "I went ahead and got the refund issued". The check now extracts those phrasings (and already caught "the order was cancelled" and "an email has been sent"). It also accepts an optional `actions` or `actionsDone` array (for example `[{"action":"refund","status":"done"}]`), including when that list is inside a JSON reply, and grades those structured claims against the tool log. The verb list stays as a backstop. Synonyms such as refund, email and cancel are mapped to the same actions as the tool log. No AI key is required.
 
 ### 1.1.0 (2026-11-14, PT)
 
