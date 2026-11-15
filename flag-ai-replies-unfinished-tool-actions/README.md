@@ -8,6 +8,8 @@ Version 1.1.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](fla
 
 Support and updates: [solokit33.gumroad.com/l/n8n-agent-claim-check](https://solokit33.gumroad.com/l/n8n-agent-claim-check)
 
+Grading saved runs in bulk for a client report: [Agent Claim Audit ($19)](https://solokit33.gumroad.com/l/agent-claim-audit), an offline HTML and CSV report built on this same grader.
+
 ## What it does
 
 1. A **Webhook** at `POST /webhook/say-do-check` receives the agent's final `reply` plus either a `calls` tool log, or a saved n8n `execution` and a `nodeMap`.

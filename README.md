@@ -24,6 +24,10 @@ These workflows are free to use under the MIT license in this repo. If you want 
 - Claim check template: [solokit33.gumroad.com/l/n8n-agent-claim-check](https://solokit33.gumroad.com/l/n8n-agent-claim-check)
 - ROI estimate form: [solokit33.gumroad.com/l/n8n-roi-estimate-form](https://solokit33.gumroad.com/l/n8n-roi-estimate-form)
 
+## Audit runs you already have
+
+The claim check grades one reply as it happens. To grade a folder of saved n8n executions after the fact and get a printable HTML report plus a CSV of every claim, there is a paid offline kit built on the same grader, no AI key: [Agent Claim Audit ($19)](https://solokit33.gumroad.com/l/agent-claim-audit).
+
 ## Tested on
 
 Both templates were imported into a fresh n8n 2.46.6 self hosted instance and run with mocks. The exact cases and the steps that were not run are listed in each template README.
