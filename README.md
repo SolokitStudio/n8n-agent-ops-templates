@@ -9,6 +9,8 @@ Two n8n workflows from [Solokit Studio](https://github.com/SolokitStudio) for pe
 
 Both are standard n8n JSON. Import them, fill the Config node, and connect the named credentials. No community nodes. No AI key is required.
 
+The claim check is also published in the official n8n template library: [Flag unsupported AI agent actions with Slack alerts and Google Sheets logs](https://n8n.io/workflows/22987-flag-unsupported-ai-agent-actions-with-slack-alerts-and-google-sheets-logs/).
+
 A third, related workflow (approve a lead reply in Slack before Gmail sends it) lives in its own repo: [n8n-human-in-the-loop-reply](https://github.com/SolokitStudio/n8n-human-in-the-loop-reply). It is also published in the official n8n template library: [Approve lead reply emails in Slack with Gmail and Google Sheets](https://n8n.io/workflows/22837-approve-lead-reply-emails-in-slack-with-gmail-and-google-sheets/).
 
 ## Import

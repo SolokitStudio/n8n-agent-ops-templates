@@ -4,6 +4,8 @@ An n8n workflow that compares an AI agent's final reply with the tool results fr
 
 No AI key is required. The check is a Code node you can inspect.
 
+Also in the official n8n template library: [Flag unsupported AI agent actions with Slack alerts and Google Sheets logs](https://n8n.io/workflows/22987-flag-unsupported-ai-agent-actions-with-slack-alerts-and-google-sheets-logs/).
+
 Version 1.2.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
 
 Support and updates: [solokit33.gumroad.com/l/n8n-agent-claim-check](https://solokit33.gumroad.com/l/n8n-agent-claim-check)
