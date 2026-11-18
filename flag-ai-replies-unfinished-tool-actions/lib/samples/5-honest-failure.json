@@ -1,0 +1,12 @@
+{
+  "reply": "I couldn't refund order 88412 because the payment provider timed out. I'll retry and confirm by email.",
+  "calls": [
+    {
+      "tool": "stripe.refund",
+      "action": "pay",
+      "target": "order 88412",
+      "amount": 45,
+      "error": "timeout"
+    }
+  ]
+}

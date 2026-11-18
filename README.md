@@ -4,7 +4,7 @@ Two n8n workflows from [Solokit Studio](https://github.com/SolokitStudio) for pe
 
 | Template | What it does | Workflow JSON |
 |---|---|---|
-| [Flag AI replies when tool actions did not finish](flag-ai-replies-unfinished-tool-actions/README.md) | Checks an agent's final reply against the tool results from the same run. Unsupported claims such as sent, refunded, booked or deleted go to Slack, and the caller gets a pass, review or stop-ship verdict. | [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions/flag-ai-replies-unfinished-tool-actions.json) |
+| [Flag AI replies when tool actions did not finish](flag-ai-replies-unfinished-tool-actions/README.md) | Checks an agent's final reply against the tool results from the same run. Unsupported claims such as sent, refunded, booked or deleted go to Slack, and the caller gets a pass, review or stop-ship verdict. Version 1.3.0 also catches partial batch results and binds each claim to the matching order or recipient. Five sample cases run with no accounts. | [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions/flag-ai-replies-unfinished-tool-actions.json) |
 | [Email an ROI estimate and price range from a request form](automation-roi-estimate-form/README.md) | Turns a request form into hours and value saved, a suggested pilot price, a payback check that can fail honestly, retainer options, an email and a Google Sheet row. | [automation-roi-estimate-form.json](automation-roi-estimate-form/automation-roi-estimate-form.json) |
 
 Both are standard n8n JSON. Import them, fill the Config node, and connect the named credentials. No community nodes. No AI key is required.
@@ -32,7 +32,7 @@ The claim check grades one reply as it happens. To grade a folder of saved n8n e
 
 ## Tested on
 
-Both templates were imported into a fresh n8n 2.46.6 self hosted instance and run with mocks. The exact cases and the steps that were not run are listed in each template README.
+Both templates were imported into a fresh n8n 2.46.6 self hosted instance and run with mocks. Claim check 1.3.0 was also imported and run on n8n 2.48.5 on 2026-11-18 (PT). The exact cases and the steps that were not run are listed in each template README.
 
 ## License
 

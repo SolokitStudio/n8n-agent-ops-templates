@@ -1,0 +1,19 @@
+{
+  "reply": "I sent the proposal to dana@acme.com and booked the demo.",
+  "calls": [
+    {
+      "tool": "gmail.send",
+      "action": "send",
+      "target": "dana@acme.com",
+      "status": "done",
+      "id": "18c2f0a9"
+    },
+    {
+      "tool": "gcal.create",
+      "action": "book",
+      "target": "Dana demo Tuesday",
+      "status": "done",
+      "id": "evt_5521"
+    }
+  ]
+}

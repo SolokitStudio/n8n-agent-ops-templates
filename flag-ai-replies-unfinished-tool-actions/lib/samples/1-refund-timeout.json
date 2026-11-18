@@ -1,0 +1,102 @@
+{
+  "execution": {
+    "id": "1234",
+    "status": "success",
+    "data": {
+      "resultData": {
+        "runData": {
+          "Send Proposal (Gmail)": [
+            {
+              "executionStatus": "success",
+              "data": {
+                "ai_tool": [
+                  [
+                    {
+                      "json": {
+                        "id": "18c2f0a9",
+                        "labelIds": [
+                          "SENT"
+                        ]
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ],
+          "Create Demo Event": [
+            {
+              "executionStatus": "success",
+              "data": {
+                "ai_tool": [
+                  [
+                    {
+                      "json": {
+                        "id": "evt_5521",
+                        "status": "confirmed",
+                        "summary": "Dana demo Tuesday"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ],
+          "Refund (HTTP Request)": [
+            {
+              "executionStatus": "error",
+              "error": {
+                "message": "The connection timed out"
+              },
+              "data": {}
+            }
+          ],
+          "AI Agent": [
+            {
+              "executionStatus": "success",
+              "data": {
+                "main": [
+                  [
+                    {
+                      "json": {
+                        "output": "I sent the proposal to dana@acme.com, booked the demo with Dana for Tuesday, and refunded $45 for order 88412. All set!"
+                      }
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "nodeMap": {
+    "reply": {
+      "node": "AI Agent",
+      "field": "output"
+    },
+    "nodes": {
+      "Send Proposal (Gmail)": {
+        "tool": "gmail.send",
+        "action": "send",
+        "target_value": "dana@acme.com",
+        "id": "id"
+      },
+      "Create Demo Event": {
+        "tool": "gcal.create",
+        "action": "book",
+        "target": "summary",
+        "id": "id"
+      },
+      "Refund (HTTP Request)": {
+        "tool": "stripe.refund",
+        "action": "pay",
+        "target_value": "order 88412",
+        "id": "id",
+        "status": "status",
+        "amount": "amount_usd"
+      }
+    }
+  }
+}
