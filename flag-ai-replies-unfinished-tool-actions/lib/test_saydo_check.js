@@ -711,6 +711,21 @@ t13('README sample files give the documented verdicts through check.js', () => {
   assert.match(bad.stderr, /Missing "calls"/);
 });
 
+t13('targets and amounts are read from tool arguments when no target is logged', () => {
+  const log = [
+    { tool: 'stripe.refund', action: 'pay', args: { order: '184', amount: 30 }, status: 'succeeded', id: 're_184' },
+    { tool: 'stripe.refund', action: 'pay', args: { order: '185', amount: 45 }, status: 'failed', error: 'card_declined' },
+  ];
+  assert.strictEqual(chk({ reply: 'Your refund for order #185 has been processed.', calls: log }).verdict, 'stop_ship');
+  assert.strictEqual(chk({ reply: 'Your refund for order #184 has been processed.', calls: log }).verdict, 'pass');
+  assert.strictEqual(chk({ reply: 'Your refund has been processed.', calls: log }).verdict, 'stop_ship');
+  assert.strictEqual(chk({ reply: 'Your $45 refund has been processed.', calls: log }).verdict, 'stop_ship');
+  assert.strictEqual(chk({ reply: 'I refunded $30.', calls: log }).verdict, 'pass');
+  const both = log.map((c) => ({ ...c, status: 'succeeded', error: undefined, id: `re_${c.args.order}` }));
+  assert.deepStrictEqual(chk({ reply: 'Both refunds have been processed.', calls: both }).duplicates, []);
+  assert.strictEqual(chk({ reply: 'Both refunds have been processed.', calls: both }).verdict, 'pass');
+});
+
 assert.strictEqual(L13.VERSION, '1.3.0');
 console.log(`v1.3.0 cases passed: ${n13}`);
 

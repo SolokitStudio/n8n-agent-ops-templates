@@ -139,7 +139,7 @@ Optional fields:
 - `failureMarkers`, `partialRules`: override the Config lists for one request.
 - `execution` plus `nodeMap`: a saved n8n execution (`GET /api/v1/executions/<id>?includeData=true`) instead of `calls`. A default map is in Config.
 
-Fields read from each call: `action`, `tool`, `target` (string, object or list), `id` or `object_id`, `status`, `http_status` (also `statusCode`, `status_code`, or a numeric `status`), `error`, `body` (or `data`, `json`, `result`, `response`, `output`), `amount`, `amount_cents`, `amount_unit`, `currency`, `idempotency_key`.
+Fields read from each call: `action`, `tool`, `target` (string, object or list; when it is missing, the tool arguments in `args`, `arguments`, `input` or `params` are used), `id` or `object_id`, `status`, `http_status` (also `statusCode`, `status_code`, or a numeric `status`), `error`, `body` (or `data`, `json`, `result`, `response`, `output`), `amount`, `amount_cents`, `amount_unit`, `currency`, `idempotency_key`.
 
 ### Partial rules
 
@@ -159,7 +159,7 @@ You do not need n8n for this, only Node. The grader has no dependencies. It was 
 3. Run `node check.js my-run.json` for the text report, or `node check.js my-run.json --json` for the full result. The exit code is 0 for pass, 1 for review, 2 for stop_ship and 3 for bad input, so it can sit in a script or CI job.
 4. If a call that you know failed is graded S3, add the body field your API uses to `failureMarkers` or `partialRules` in the payload and run it again. If a claim is missed or a sentence is read as a claim when it should not be, please open an issue with the reply text and the call, with private data removed.
 
-`node test_saydo_check.js` runs the full test suite (324 assertions, including 72 cases added in 1.3.0). It also cross checks a few cases against the Python [Say-Do Diff](https://github.com/SolokitStudio/say-do-diff) package when that package is installed locally, and skips that step otherwise.
+`node test_saydo_check.js` runs the full test suite (331 assertions, including 73 cases added in 1.3.0). It also cross checks a few cases against the Python [Say-Do Diff](https://github.com/SolokitStudio/say-do-diff) package when that package is installed locally, and skips that step otherwise.
 
 ## Known limits
 
@@ -193,7 +193,7 @@ The Code node is a port of the open source [Say-Do Diff](https://github.com/Solo
 
 On 2026-11-18 (PT), version 1.3.0:
 
-- `node test_saydo_check.js` on Node 24: all 324 assertions passed. The 1.2.0 test file, run unchanged against the 1.3.0 grader, also passed.
+- `node test_saydo_check.js` on Node 24: all 331 assertions passed. The 1.2.0 test file, run unchanged against the 1.3.0 grader, also passed.
 - n8n 2.48.5 self hosted, fresh empty database. The workflow JSON imported with no errors. `n8n execute` on **Run Sample Cases** returned all five cases with `matchesExpected: true`.
 - A test copy with the Slack URL pointed at a local mock and Google Sheets disabled was activated and called over HTTP. The five sample payloads returned HTTP 200 with the verdicts in the table above. The mock received three posts (two stop-ship, one review) and none for the two pass cases. A payload with no reply returned HTTP 400 with `verdict: "error"` and the reason.
 
@@ -206,7 +206,7 @@ Not run: real Slack delivery, a real Google Sheets append, a live agent workflow
 ### 1.3.0 (2026-11-18, PT)
 
 - Partial results. A commenter on r/n8n pointed out that a batch call returning HTTP 200 with 48 created and 2 failed was graded as done. Batch bodies with success and failure counts, or item lists with per item status, are now graded P (partial). A claim backed only by partial evidence is reported with its counts and the verdict is `review` (`stop_ship` for payments and deletes). The field lists are editable in Config as `partialRules`.
-- Claims bind to the matching call. Another commenter on r/n8n described two refunds in one run, #184 finished and #185 failed, with the #185 customer told "Your refund has been processed". The check used to accept any finished call of the same action. It now matches by order number, email, quoted name or amount (whole token), reports a reply with no target as ambiguous when one of several targets failed, and accepts an optional `replyTarget`.
+- Claims bind to the matching call. Another commenter on r/n8n described two refunds in one run, #184 finished and #185 failed, with the #185 customer told "Your refund has been processed". The check used to accept any finished call of the same action. It now matches by order number, email, quoted name or amount (whole token), reports a reply with no target as ambiguous when one of several targets failed, accepts an optional `replyTarget`, and reads the order or amount from the call's tool arguments (`args`) when no target was logged.
 - Amounts and currency. Amount strings such as `"40.00"` or `"$45.00"`, `amount_cents`, `amount_unit: "cents"`, and amounts written as "45 USD" are read correctly. A currency mismatch is a gap.
 - Not claims: "I couldn't send", "I was unable to book", "your refund is pending" and curly apostrophe forms such as "haven’t" are no longer read as claims. Statements that say an action did not happen or is pending are listed under `disclosures`.
 - A bare "Done." is treated like "All set!". "Refund issued for order 88412" is now read as a claim.

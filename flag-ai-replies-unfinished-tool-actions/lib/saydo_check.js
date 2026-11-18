@@ -469,6 +469,12 @@ function normalizeCall(raw) {
     call.http_status = numericStatus(call.http_status);
   }
   if (numericStatus(call.status) != null) delete call.status;
+  const args = callArgs(call);
+  if (args && (call.amount == null || call.amount === '') && call.amount_cents == null) {
+    if (args.amount != null) call.amount = args.amount;
+    else if (args.amount_cents != null) call.amount_cents = args.amount_cents;
+    if (call.currency == null && args.currency != null) call.currency = args.currency;
+  }
   const unit = String(call.amount_unit || call.amountUnit || '').toLowerCase();
   let amount = null;
   if (call.amount_cents != null || call.amount_minor != null) {
@@ -589,12 +595,28 @@ function flatText(v) {
   return String(v);
 }
 
+const ARG_KEYS = ['args', 'arguments', 'input', 'params', 'parameters'];
+
+function callArgs(call) {
+  for (const k of ARG_KEYS) {
+    const v = call[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+  }
+  return null;
+}
+
+/** The call's target, or its tool arguments when no target was logged. */
+function targetSource(call) {
+  if (call.target != null && call.target !== '') return call.target;
+  return callArgs(call);
+}
+
 function targetOnly(call) {
-  return flatText(call.target).toLowerCase().trim();
+  return flatText(targetSource(call)).toLowerCase().trim();
 }
 
 function targetText(call) {
-  return `${flatText(call.target)} ${call.id || ''} ${call.object_id || ''}`.toLowerCase().replace(/#/g, '');
+  return `${flatText(targetSource(call))} ${call.id || ''} ${call.object_id || ''}`.toLowerCase().replace(/#/g, '');
 }
 
 function escapeRe(s) {
@@ -1044,7 +1066,7 @@ function checkClaim(claim, calls) {
         }
         continue;
       }
-      if (RANK[c._grade] >= RANK[claim.needs]) good.add(stableTarget(c.target));
+      if (RANK[c._grade] >= RANK[claim.needs]) good.add(stableTarget(targetSource(c)));
     }
     const total = good.size + batchGood;
     if (total < claim.count) {
@@ -1085,7 +1107,7 @@ function findDuplicates(calls) {
   const groups = new Map();
   for (const c of calls) {
     if (RANK[c._grade] < 2 || c.repeat_ok || c.informational) continue;
-    const key = JSON.stringify([c.tool, c.action, stableTarget(c.target)]);
+    const key = JSON.stringify([c.tool, c.action, stableTarget(targetSource(c))]);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(c);
   }
@@ -1102,7 +1124,7 @@ function findDuplicates(calls) {
   for (const c of calls) {
     if (c._grade !== 'S1' || c.informational || c.repeat_ok) continue;
     const retry = calls.find((d) => d._i > c._i && RANK[d._grade] >= 2 && d.tool === c.tool && d.action === c.action
-      && stableTarget(d.target) === stableTarget(c.target)
+      && stableTarget(targetSource(d)) === stableTarget(targetSource(c))
       && !(c.idempotency_key && c.idempotency_key === d.idempotency_key));
     if (retry) {
       dupes.push({ tool: c.tool, action: c.action, target: c.target, calls: [c._i, retry._i], kind: 'retry_after_unknown' });
