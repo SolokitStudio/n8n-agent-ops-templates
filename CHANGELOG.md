@@ -4,6 +4,14 @@ All notable changes to the templates in this repository.
 
 ## Flag AI replies in Slack when tool actions did not finish
 
+### 1.4.0 (2026-11-19, PT)
+
+- Implied completion. A commenter on r/n8n reported that a reply promising a result after a failed refund ("you'll see the credit on your statement in 3-5 days") had 0 claims and passed. Future tense consequences of an action now count as a claim of that action: refund or card credit ("the credit will appear on your card", "you will receive your refund within 5 business days"), confirmation email ("a confirmation email is on its way"), and shipment ("your tracking number is coming"). They are graded against the tool log like other claims, so the reported reply is now `stop_ship` when the refund failed or was never called. An email promise needs an email send; a Slack or other chat send alone does not back it.
+- Conditional, hedged and negated consequences ("once it's processed", "if approved", "you may see the credit", "you won't see the credit") are not claims. Conditional and negated ones are listed under `disclosures` with kind `conditional` or `not_done`.
+- New action `ship` (aliases shipment, shipping, fulfill, fulfillment, create_shipment, create_label). A call whose tool name mentions shipping or a carrier also backs a shipment claim.
+- Fix: "5 business days" and other time spans are no longer read as a count.
+- Workflow: a sixth built in sample case (declined refund, promised credit, expected `stop_ship`). Tests: 467 assertions, including 13 new cases.
+
 ### 1.3.0 (2026-11-18, PT)
 
 - Partial results. A commenter on r/n8n pointed out that a batch call returning HTTP 200 with 48 created and 2 failed was graded as done. Batch bodies with success and failure counts, or item lists with per item status, are now graded P (partial). A claim backed only by partial evidence is reported with its counts and the verdict is `review` (`stop_ship` for payments and deletes). The field lists are editable in Config as `partialRules`.

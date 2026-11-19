@@ -7,6 +7,12 @@
  * claims bind to the tool call for the same order, recipient or amount,
  * "couldn't" and "pending" statements are reported as disclosures, and
  * malformed input fails with a clear message.
+ * Version 1.4.0: implied completion. A future tense consequence of an
+ * action ("you'll see the credit on your statement in 3-5 days", "a
+ * confirmation email is on its way", "your tracking number is coming")
+ * is a claim that the action happened, and is graded against the tool log.
+ * Conditional, negated or hedged wording ("once it's processed", "if
+ * approved", "may") is listed as a disclosure instead.
  *
  * Evidence grades (lowest to highest, plus failed):
  *   S0  no tool call recorded for the claim
@@ -41,7 +47,7 @@ for (const [action, forms] of Object.entries(VERBS)) {
 FORM_TO_ACTION.delivered = 'send';
 FORM_TO_ACTION.settled = 'pay';
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 
 const ACTION_ALIASES = {
   refund: 'pay', refunds: 'pay', reimbursement: 'pay', reimbursements: 'pay',
@@ -53,6 +59,8 @@ const ACTION_ALIASES = {
   delete: 'delete', deletion: 'delete', remove: 'delete',
   book: 'book', booking: 'book', schedule: 'book', reservation: 'book',
   create: 'create', update: 'update', post: 'post',
+  ship: 'ship', shipment: 'ship', shipping: 'ship', fulfill: 'ship', fulfil: 'ship',
+  fulfillment: 'ship', fulfilment: 'ship', create_shipment: 'ship', create_label: 'ship',
 };
 for (const [action, forms] of Object.entries(VERBS)) {
   ACTION_ALIASES[action] = action;
@@ -259,7 +267,7 @@ const ID_RE = /(?<![$\w.])#?(\d{3,})(?!\w|\.\d)/g;
 const QUOTED_RE = /["“']([^"”']{2,60})["”']/g;
 // A count is a number before a plural noun ("all 50 invites"), not an id
 // ("order #185 has") and not an auxiliary verb ending in s.
-const COUNT_RE = new RegExp('(?<![#\\w])(?<!\\b(?:order|invoice|ticket|case|id|no\\.?|number|room|account)\\s)(?:all\\s+)?(\\d+|' + Object.keys(NUMBER_WORDS).join('|') + ')\\s+(?:of\\s+the\\s+)?(?!(?:has|was|is|this|his|its|yes|plus|does|thus|as|us)\\b)[a-z]+s\\b', 'i');
+const COUNT_RE = new RegExp('(?<![#\\w])(?<!\\b(?:order|invoice|ticket|case|id|no\\.?|number|room|account)\\s)(?:all\\s+)?(\\d+|' + Object.keys(NUMBER_WORDS).join('|') + ')\\s+(?:of\\s+the\\s+)?(?!(?:has|was|is|this|his|its|yes|plus|does|thus|as|us|business|seconds|minutes|hours|days|weeks|months|years)\\b)[a-z]+s\\b', 'i');
 const WORD_RE = /[A-Za-z']+|\u2705/g;
 
 // Phrasings a commenter on r/n8n showed the verb list missed. Conservative:
@@ -302,6 +310,104 @@ const PHRASE_RULES = [
     verb: 'invited',
   },
 ];
+
+// v1.4.0: implied completion (reported on r/n8n: "you'll see the credit on
+// your statement in 3-5 days" after a failed refund graded clean). A future
+// tense consequence only makes sense if the action already happened, so it
+// is a claim of that action. `kind` names the implied action in the report.
+// `hint` narrows the tool calls that can back the claim when the log has them.
+const MONEY_NOUN = '(?:full\\s+|partial\\s+)?(?:credit|refund|reimbursement|money|funds|payment|amount)';
+const IMPLIED_RULES = [
+  // pay: the customer will see the money
+  { kind: 'refund', action: 'pay', re: new RegExp(`\\b(?:you'll|you will|you should|you'd|expect to)\\s+(?:see|receive|get|notice)\\s+(?:the\\s+|your\\s+|a\\s+|an\\s+|that\\s+|this\\s+)?${MONEY_NOUN}s?\\b`, 'i') },
+  { kind: 'refund', action: 'pay', re: new RegExp(`\\b(?:the|your|this|that|a|an)\\s+${MONEY_NOUN}s?\\s+(?:will|should)\\s+(?:appear|show(?:\\s+up)?|post|land|arrive|reflect|hit|clear|go\\s+through|be\\s+(?:back|visible|returned|credited|reflected|on|in|available))\\b`, 'i') },
+  { kind: 'charge', action: 'pay', re: /\b(?:the|this|that|a|an)\s+charge\s+(?:will|should)\s+(?:appear|show(?:\s+up)?|post|be\s+(?:visible|reflected|on))\b/i },
+  { kind: 'refund', action: 'pay', re: /\b(?:it|this|that)\s+(?:will|should)\s+(?:appear|show(?:\s+up)?|post|be\s+(?:back|visible|reflected))\s+(?:on|in)\s+(?:your|the)\s+(?:card|statement|bank|account|balance)\b/i },
+  { kind: 'refund', action: 'pay', re: new RegExp(`\\b(?:the|your)\\s+${MONEY_NOUN}s?\\s+(?:is|are)\\s+(?:on\\s+(?:its|their|the)\\s+way|headed\\s+(?:your|back)|coming\\s+back)\\b`, 'i') },
+  { kind: 'refund', action: 'pay', re: /\b(?:will|should)\s+be\s+(?:refunded|credited|returned|reimbursed)\s+(?:back\s+)?(?:to|on)\s+(?:your|the)\s+(?:card|account|original|statement|bank|payment)\b/i },
+  { kind: 'refund', action: 'pay', re: /\b(?:you'll|you will|you should)\s+be\s+(?:refunded|credited|reimbursed)\b/i },
+  { kind: 'refund', action: 'pay', re: new RegExp(`\\ballow\\s+(?:\\d+|[a-z]+)(?:\\s*(?:-|to)\\s*\\d+)?\\s+(?:business\\s+|working\\s+)?days\\s+for\\s+(?:the|your)\\s+${MONEY_NOUN}\\b`, 'i') },
+  // send: an email or message is on its way
+  { kind: 'email', action: 'send', hint: 'email', re: /\b(?:a|an|the|your)\s+(?:confirmation\s+|follow[- ]up\s+|receipt\s+)?(?:email|e-mail|receipt|confirmation|invite|invitation|message|text|sms)\s+(?:is|has\s+been)\s+(?:on\s+(?:its|the)\s+way|headed\s+your\s+way|coming\s+your\s+way)\b/i },
+  { kind: 'email', action: 'send', hint: 'email', re: /\b(?:a|an|the|your)\s+(?:confirmation\s+|follow[- ]up\s+)?(?:email|e-mail|receipt|confirmation|invite|invitation)\s+(?:is|should\s+be|will\s+be)\s+in\s+your\s+inbox\b/i },
+  { kind: 'email', action: 'send', hint: 'email', re: /\b(?:you'll|you will|you should)\s+(?:receive|get|see)\s+(?:a|an|the|your)\s+(?:confirmation(?:\s+(?:email|e-mail|message|text))?|(?:follow[- ]up\s+)?(?:email|e-mail)|receipt|invite|invitation)\b/i },
+  { kind: 'email', action: 'send', hint: 'email', re: /\bcheck\s+your\s+(?:inbox|email)\s+for\b/i },
+  // ship: a shipment exists
+  { kind: 'shipment', action: 'ship', re: /\b(?:a|the|your)\s+tracking\s+(?:number|link|code|info(?:rmation)?|details)\s+(?:is\s+|are\s+|will\s+be\s+|should\s+be\s+)?(?:on\s+(?:its|the)\s+way|coming|(?:sent|emailed|texted)\b|headed)/i },
+  { kind: 'shipment', action: 'ship', re: /\b(?:you'll|you will|you should)\s+(?:receive|get)\s+(?:a|an|the|your)\s+tracking\s+(?:number|link|code|email)\b/i },
+  { kind: 'shipment', action: 'ship', re: /\b(?:your|the)\s+(?:order|package|parcel|shipment|replacement|item|items)\s+(?:is|are|has\s+been)\s+on\s+(?:its|their|the)\s+way\b/i },
+  { kind: 'shipment', action: 'ship', re: /\b(?:your|the)\s+(?:order|package|parcel|shipment|replacement)\s+(?:will|should)\s+(?:arrive|be\s+delivered|be\s+there|reach\s+you)\s+(?:in|within|by|on|tomorrow|today|this|next)\b/i },
+];
+// Wording that keeps an implied consequence from being a claim.
+const IMPLIED_CONDITION_RE = /\b(?:if|once|when|whenever|after|as\s+soon\s+as|unless|until|pending|subject\s+to|upon|provided|assuming|in\s+case|approval|approved|eligible)\b/i;
+const IMPLIED_HEDGE_RE = /\b(?:may|might|could|possibly|hopefully|probably|perhaps)\b/i;
+const IMPLIED_NEGATION_RE = /\b(?:not|never|no)\b|n't\b|\bcannot\b/i;
+const EMAIL_TOOL_RE = /mail|smtp|sendgrid|\bses\b|postmark|mailgun|resend|mailchimp|brevo|sendinblue/i;
+const CHAT_TOOL_RE = /slack|discord|teams|telegram|whatsapp|\bsms\b|twilio|mattermost/i;
+const SHIP_TOOL_RE = /ship|fulfil|tracking|parcel|shippo|easypost|shipstation|\bfedex\b|\busps\b|\bdhl\b|\bups\b|courier/i;
+
+function impliedHits(sent) {
+  const out = [];
+  const used = [];
+  for (const rule of IMPLIED_RULES) {
+    const m = rule.re.exec(sent);
+    if (!m) continue;
+    const start = m.index;
+    const end = start + m[0].length;
+    if (used.some(([a, b]) => start < b && end > a)) continue;
+    used.push([start, end]);
+    out.push({ rule, start, end, text: m[0] });
+  }
+  return out;
+}
+
+function impliedGuard(sent, hit) {
+  if (/\?\s*$/.test(sent)) return 'question';
+  const window = sent.slice(Math.max(0, hit.start - 16), hit.end);
+  if (IMPLIED_NEGATION_RE.test(window)) return 'negated';
+  if (IMPLIED_CONDITION_RE.test(sent)) return 'conditional';
+  if (IMPLIED_HEDGE_RE.test(window)) return 'conditional';
+  return null;
+}
+
+function extractImpliedClaims(sent, existing, earlier) {
+  const added = [];
+  for (const hit of impliedHits(sent)) {
+    if (impliedGuard(sent, hit)) continue;
+    const { rule } = hit;
+    if (existing.concat(added).some((c) => !c.umbrella && c.action === rule.action && c.sentence === sent)) continue;
+    // "in 3-5 days" or "within 120 days" is a time span, not an order id.
+    const details = detailsFrom(sent.replace(/\b\d+(?:\s*(?:-|to|\u2013)\s*\d+)?\s+(?:business\s+|working\s+|bank\s+)?(?:days?|hours?|weeks?|minutes?)\b/gi, ' '));
+    // "Refund for order 185 issued. You'll see the credit in 3-5 days." is one claim.
+    if (!details.targets.length && details.amount == null
+      && earlier.some((c) => !c.umbrella && c.action === rule.action)) continue;
+    added.push({
+      sentence: sent,
+      verb: 'implied',
+      action: rule.action,
+      needs: 'S3',
+      targets: details.targets,
+      amount: details.amount,
+      currency: details.currency,
+      count: null,
+      umbrella: false,
+      implied: rule.kind,
+      hint: rule.hint || null,
+    });
+  }
+  return added;
+}
+
+function extractImpliedDisclosures(sent) {
+  const out = [];
+  for (const hit of impliedHits(sent)) {
+    const why = impliedGuard(sent, hit);
+    if (why === 'conditional' || why === 'negated') {
+      out.push({ sentence: sent, kind: why === 'negated' ? 'not_done' : 'conditional', action: hit.rule.action, verb: `implied ${hit.rule.kind}` });
+    }
+  }
+  return out;
+}
 
 // v1.3.0: batch and bulk responses that report mixed results (reported on
 // r/n8n: HTTP 200 with {"created":48,"failed":2} was graded as finished).
@@ -767,7 +873,9 @@ function extractClaims(text) {
       });
     });
     claims.push(...verbClaims);
-    claims.push(...extractPhraseClaims(sent, verbClaims));
+    const phraseClaims = extractPhraseClaims(sent, verbClaims);
+    claims.push(...phraseClaims);
+    claims.push(...extractImpliedClaims(sent, verbClaims.concat(phraseClaims), claims.filter((c) => c.sentence !== sent)));
     if (UMBRELLA.some((u) => low.includes(u)) || sent.includes('\u2705') || BARE_DONE_RE.test(sent.trim())) {
       claims.push({ sentence: sent, verb: '(umbrella)', action: '*', needs: 'S3', targets: [], amount: null, currency: null, count: null, umbrella: true });
     }
@@ -804,6 +912,9 @@ function extractDisclosures(text) {
     for (const m of allMatches(PENDING_RE, sent)) {
       const noun = String(m[1] || m[3]).toLowerCase().replace(/s$/, '');
       out.push({ sentence: sent, kind: 'pending', action: NOUN_ACTION[noun] || '', verb: String(m[2] || m[4]).toLowerCase() });
+    }
+    for (const d of extractImpliedDisclosures(sent)) {
+      if (!out.some((o) => o.sentence === sent && o.action === d.action)) out.push(d);
     }
   }
   return out;
@@ -999,6 +1110,24 @@ function partialFinding(claim, calls, ids) {
   return { claim, status: 'partial', grade: 'P', reason: lead + (p ? describeBatch(p._batch) : 'some items failed'), calls: ids };
 }
 
+// v1.4.0: which calls can back an implied claim. A shipment is a 'ship'
+// call or any call whose tool or action names shipping; an email promise
+// prefers email tools and falls back to any send call.
+function callsFor(claim, calls) {
+  if (claim.action === 'ship') {
+    return calls.filter((c) => c.action === 'ship'
+      || (!c.informational && SHIP_TOOL_RE.test(`${c.tool || ''} ${c.action || ''}`)))
+      .map((c) => (c.action === 'ship' ? c : { ...c, action: 'ship' }));
+  }
+  if (claim.hint === 'email') {
+    const same = calls.filter((c) => c.action === claim.action);
+    const mail = same.filter((c) => EMAIL_TOOL_RE.test(`${c.tool || ''} ${c.channel || ''}`));
+    const pick = mail.length ? mail : same.filter((c) => !CHAT_TOOL_RE.test(`${c.tool || ''} ${c.channel || ''}`));
+    return pick.concat(calls.filter((c) => c.action !== claim.action));
+  }
+  return calls;
+}
+
 function checkClaim(claim, calls) {
   if (claim.umbrella) {
     if (!calls.length) return { claim, status: 'gap', grade: 'S0', reason: 'umbrella claim, but the log has no tool calls', calls: [] };
@@ -1013,6 +1142,17 @@ function checkClaim(claim, calls) {
       return { claim, status: allPartial ? 'partial' : 'gap', grade: bestGrade(weak), reason: `umbrella claim, but these calls are below S3: ${names}`, calls: weak.map((c) => c._i) };
     }
     return { claim, status: 'ok', grade: bestGrade(live), reason: 'every call in the log is S3 or better', calls: live.map((c) => c._i) };
+  }
+  if (claim.implied) {
+    const pool = callsFor(claim, calls);
+    if (claim.hint === 'email' && !pool.some((c) => c.action === claim.action) && calls.some((c) => c.action === claim.action)) {
+      const chat = [...new Set(calls.filter((c) => c.action === claim.action).map((c) => c.tool || '?'))].join(', ');
+      return { claim, status: 'gap', grade: 'S0', reason: `implied ${claim.implied}: no email send in the log, only chat sends (${chat})`, calls: [] };
+    }
+    const f = checkClaim({ ...claim, implied: null }, pool);
+    f.claim = claim;
+    f.reason = `implied ${claim.implied}: ${f.reason}`;
+    return f;
   }
   const same = calls.filter((c) => c.action === claim.action);
   if (!same.length) return { claim, status: 'gap', grade: 'S0', reason: `no '${claim.action}' call in the log`, calls: [] };
@@ -1160,6 +1300,10 @@ function toText(findings, duplicates, stopShip, disclosures) {
     }
   }
   for (const d of disclosures || []) {
+    if (d.kind === 'conditional') {
+      lines.push(`[NOTE] reply promises ${d.action || 'an action'} (${d.verb}) only on a condition, not counted as a claim: "${d.sentence}"`);
+      continue;
+    }
     lines.push(`[NOTE] reply says ${d.action || 'an action'} is ${d.kind === 'pending' ? `still ${d.verb}` : 'not done'}, not counted as a claim: "${d.sentence}"`);
   }
   const gaps = findings.filter((f) => f.status !== 'ok');

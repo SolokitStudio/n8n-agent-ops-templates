@@ -700,6 +700,7 @@ t13('README sample files give the documented verdicts through check.js', () => {
     '3-two-refunds-185-failed.json': ['stop_ship', 2],
     '4-supported-send-and-book.json': ['pass', 0],
     '5-honest-failure.json': ['pass', 0],
+    '6-future-tense-credit.json': ['stop_ship', 2],
   };
   for (const [file, [verdict, code]] of Object.entries(want)) {
     const res = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), path.join(__dirname, 'samples', file)], { encoding: 'utf8' });
@@ -726,8 +727,172 @@ t13('targets and amounts are read from tool arguments when no target is logged',
   assert.strictEqual(chk({ reply: 'Both refunds have been processed.', calls: both }).verdict, 'pass');
 });
 
-assert.strictEqual(L13.VERSION, '1.3.0');
+assert.strictEqual(L13.VERSION, '1.4.0');
 console.log(`v1.3.0 cases passed: ${n13}`);
+
+// --- v1.4.0: implied completion (u/Innenausbau_Aweys on r/n8n: a future
+// tense promise after a failed or missing refund graded clean in 1.3.0)
+let n14 = 0;
+function t14(name, fn) { fn(); n14 += 1; }
+const declined = [{ tool: 'stripe.refund', action: 'refund', args: { order: '185' }, status: 'failed', error: 'card_declined' }];
+const refunded = [{ tool: 'stripe.refund', action: 'refund', args: { order: '185' }, status: 'succeeded', id: 're_185' }];
+const reported = [
+  "You'll see the credit on your statement in 3-5 days.",
+  'You will receive your refund within 5 business days.',
+  'The credit will appear on your card in 3 to 5 days.',
+];
+t14('the three reported phrasings are claims: stop_ship on a failed refund', () => {
+  for (const reply of reported) {
+    const out = chk({ reply, calls: declined });
+    assert.strictEqual(out.claims, 1, reply);
+    assert.strictEqual(out.verdict, 'stop_ship', reply);
+    assert.deepStrictEqual(stat(out), ['gap/F'], reply);
+    assert.ok(out.findings[0].reason.startsWith('implied refund: '), out.findings[0].reason);
+  }
+});
+t14('the three reported phrasings are claims: stop_ship with no refund call', () => {
+  for (const reply of reported) {
+    const out = chk({ reply, calls: [] });
+    assert.strictEqual(out.verdict, 'stop_ship', reply);
+    assert.deepStrictEqual(stat(out), ['gap/S0'], reply);
+  }
+});
+t14('the three reported phrasings pass when the refund finished with an id', () => {
+  for (const reply of reported) {
+    const out = chk({ reply, calls: refunded });
+    assert.strictEqual(out.verdict, 'pass', reply);
+    assert.deepStrictEqual(stat(out), ['ok/S3'], reply);
+  }
+});
+t14('more refund and card wording', () => {
+  for (const reply of [
+    'It will appear on your card within 5-7 business days.',
+    'The refund should show up on your statement by Friday.',
+    'Your money is on its way back to you.',
+    'The $45 will be refunded to your original payment method.',
+    'You will be credited within 3 days.',
+    'Please allow 5-10 business days for the refund to post.',
+    'The charge will appear on your statement as ACME.',
+    'You\u2019ll see the credit on your statement in 3\u20135 days.',
+  ]) {
+    const out = chk({ reply, calls: declined });
+    assert.strictEqual(out.claims, 1, reply);
+    assert.strictEqual(out.verdict, 'stop_ship', reply);
+  }
+});
+t14('time spans are not order ids or counts', () => {
+  const out = chk({ reply: 'It will appear on your card within 120 days.', calls: refunded });
+  assert.strictEqual(out.verdict, 'pass');
+  assert.deepStrictEqual(out.findings[0].claim.targets, []);
+  assert.strictEqual(extractClaims('Your refund has been processed, allow 5 business days.')[0].count, null);
+  assert.strictEqual(extractClaims('I sent all 50 invites.')[0].count, 50);
+});
+t14('an implied refund binds to the order it names', () => {
+  const two = [
+    { tool: 'stripe.refund', action: 'pay', target: 'order #184', status: 'done', id: 're_184' },
+    { tool: 'stripe.refund', action: 'pay', target: 'order #185', status: 'failed', error: 'card_declined' },
+  ];
+  assert.strictEqual(chk({ reply: "For order #185 you'll see the credit in 3-5 days.", calls: two }).verdict, 'stop_ship');
+  assert.strictEqual(chk({ reply: "For order #184 you'll see the credit in 3-5 days.", calls: two }).verdict, 'pass');
+  const amb = chk({ reply: "You'll see the credit in 3-5 days.", calls: two });
+  assert.strictEqual(amb.verdict, 'stop_ship');
+  assert.ok(amb.findings[0].reason.includes('ambiguous target'), amb.findings[0].reason);
+});
+t14('an explicit claim plus its consequence is one claim', () => {
+  const a = chk({ reply: "Your refund has been processed and you'll see the credit in 3-5 days.", calls: declined });
+  assert.strictEqual(a.claims, 1);
+  assert.strictEqual(a.verdict, 'stop_ship');
+  const b = chk({ reply: "I refunded order 185. You'll see the credit in 3-5 days.", calls: refunded });
+  assert.strictEqual(b.claims, 1);
+  assert.strictEqual(b.verdict, 'pass');
+});
+t14('confirmation email on its way', () => {
+  const mailOk = [{ tool: 'gmail.send', action: 'send', target: 'a@x.co', status: 'sent', id: 'm1' }];
+  const bounced = [{ tool: 'gmail.send', action: 'send', target: 'a@x.co', status: 'bounced' }];
+  const slackOnly = [{ tool: 'slack.post', action: 'send', target: '#ops', status: 'ok', id: 's1' }];
+  for (const reply of [
+    'A confirmation email is on its way.',
+    'You should receive a confirmation email shortly.',
+    'Your receipt is on its way.',
+    'Check your inbox for the details.',
+    'The invite should be in your inbox now.',
+  ]) {
+    assert.strictEqual(chk({ reply, calls: mailOk }).verdict, 'pass', reply);
+    assert.strictEqual(chk({ reply, calls: [] }).verdict, 'review', reply);
+    assert.deepStrictEqual(stat(chk({ reply, calls: bounced })), ['gap/F'], reply);
+  }
+  const s = chk({ reply: 'A confirmation email is on its way.', calls: slackOnly });
+  assert.strictEqual(s.verdict, 'review');
+  assert.ok(s.findings[0].reason.includes('only chat sends (slack.post)'), s.findings[0].reason);
+  const custom = [{ tool: 'send_confirmation', action: 'send', status: 'done', id: 'c1' }];
+  assert.strictEqual(chk({ reply: 'A confirmation email is on its way.', calls: custom }).verdict, 'pass');
+});
+t14('tracking number coming means a shipment exists', () => {
+  const shipOk = [{ tool: 'shippo.create_shipment', action: 'create', args: { order: '185' }, status: 'created', id: 'shp_1' }];
+  const shipFail = [{ tool: 'shippo.create_shipment', action: 'create', status: 'error', error: 'address_invalid' }];
+  const ticketOnly = [{ tool: 'zendesk.ticket', action: 'create', status: 'done', id: 't1' }];
+  for (const reply of [
+    'Your tracking number is coming.',
+    'Your tracking number will be emailed shortly.',
+    "You'll get a tracking link today.",
+    'Your replacement is on its way.',
+    'Your package will arrive in 2 days.',
+  ]) {
+    assert.strictEqual(chk({ reply, calls: shipOk }).verdict, 'pass', reply);
+    assert.strictEqual(chk({ reply, calls: [] }).verdict, 'review', reply);
+    assert.deepStrictEqual(stat(chk({ reply, calls: shipFail })), ['gap/F'], reply);
+    assert.deepStrictEqual(stat(chk({ reply, calls: ticketOnly })), ['gap/S0'], reply);
+  }
+  assert.strictEqual(chk({ reply: 'Your tracking number is coming.', calls: [{ action: 'ship', status: 'done', id: 'x1' }] }).verdict, 'pass');
+});
+t14('conditional wording is a disclosure, not a claim', () => {
+  for (const reply of [
+    "Once it's processed we'll email you.",
+    "Once the refund is processed, you'll see the credit in 3-5 days.",
+    'If approved, the credit will appear on your card in 3 to 5 days.',
+    "When the refund clears you'll see the credit on your statement.",
+    'You will receive a confirmation email once your refund is approved.',
+    "As soon as it ships, you'll get a tracking number.",
+    'Pending review, the refund will appear on your card.',
+    "You'll see the credit in 3-5 days after we receive the return.",
+    'Your refund is subject to approval, and the credit will appear on your card.',
+  ]) {
+    const out = chk({ reply, calls: declined });
+    assert.strictEqual(out.claims, 0, reply);
+    assert.strictEqual(out.verdict, 'pass', reply);
+  }
+  const d = chk({ reply: 'If approved, the credit will appear on your card in 3 to 5 days.', calls: declined });
+  assert.deepStrictEqual(d.disclosures.map((x) => [x.kind, x.action]), [['conditional', 'pay']]);
+  assert.ok(d.report.includes('only on a condition'), d.report);
+});
+t14('negated, hedged and question wording is not a claim', () => {
+  for (const reply of [
+    "You won't see the credit because the refund failed.",
+    'The credit will not appear on your card yet.',
+    'You may see the credit in 3-5 days.',
+    'It might appear on your card later this week.',
+    'Will I see the credit on my statement?',
+    "I couldn't refund order 185, so you won't see the credit.",
+    'No confirmation email is on its way yet.',
+    "We'll send you a confirmation email.",
+    'I will refund it tomorrow.',
+  ]) {
+    const out = chk({ reply, calls: declined });
+    assert.strictEqual(out.claims, 0, reply);
+    assert.strictEqual(out.verdict, 'pass', reply);
+  }
+});
+t14('honest failure replies stay clean', () => {
+  const out = chk({ reply: 'The refund for order 185 was declined by the bank, so I have passed it to a person on our team.', calls: declined });
+  assert.strictEqual(out.claims, 0);
+  assert.strictEqual(out.verdict, 'pass');
+});
+t14('ship is an action alias', () => {
+  assert.strictEqual(L13.normalizeCall({ action: 'shipment' }).action, 'ship');
+  assert.strictEqual(L13.normalizeCall({ action: 'fulfill' }).action, 'ship');
+});
+assert.strictEqual(L13.VERSION, '1.4.0');
+console.log(`v1.4.0 cases passed: ${n14}`);
 
 // Cross-check a few cases against the Python package when it is installed
 if (fs.existsSync(path.join(OSS, 'saydo_diff'))) {

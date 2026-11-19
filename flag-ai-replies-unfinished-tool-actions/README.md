@@ -4,9 +4,9 @@ An n8n workflow that compares an AI agent's final reply with the tool results fr
 
 No AI key is required. The check is a Code node you can read, and the same file runs outside n8n with Node.
 
-Version 1.3.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
+Version 1.4.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
 
-Also in the official n8n template library: [Flag unsupported AI agent actions with Slack alerts and Google Sheets logs](https://n8n.io/workflows/22987-flag-unsupported-ai-agent-actions-with-slack-alerts-and-google-sheets-logs/). The library page carries version 1.2.0. This repository has 1.3.0.
+Also in the official n8n template library: [Flag unsupported AI agent actions with Slack alerts and Google Sheets logs](https://n8n.io/workflows/22987-flag-unsupported-ai-agent-actions-with-slack-alerts-and-google-sheets-logs/). The library page carries version 1.2.0. This repository has 1.4.0.
 
 Support and updates: [solokit33.gumroad.com/l/n8n-agent-claim-check](https://solokit33.gumroad.com/l/n8n-agent-claim-check)
 
@@ -16,7 +16,7 @@ Grading saved runs in bulk for a client report: [Agent Claim Audit ($19)](https:
 
 1. In n8n, open a new workflow, choose **Import from File** and pick [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json).
 2. Click **Execute workflow**. If n8n asks which trigger to use, pick **Run Sample Cases**. You can also hover over that node and click its play button.
-3. Open **Sample Results**. There is one row per built in case, with `expected`, `verdict` and `matchesExpected`. All five rows should show `matchesExpected: true`.
+3. Open **Sample Results**. There is one row per built in case, with `expected`, `verdict` and `matchesExpected`. All six rows should show `matchesExpected: true`.
 
 The sample path never reaches Slack or Google Sheets, so nothing needs to be connected for this step.
 
@@ -30,7 +30,7 @@ node check.js samples/2-batch-partial.json
 
 ## Sample cases and expected output
 
-The five cases are built into the workflow (node **Sample Cases**) and saved as files in [lib/samples](lib/samples). `node check.js <file>` prints the same report the webhook returns.
+The six cases are built into the workflow (node **Sample Cases**) and saved as files in [lib/samples](lib/samples). `node check.js <file>` prints the same report the webhook returns.
 
 | Case | Reply | Tool log | Verdict |
 |---|---|---|---|
@@ -39,6 +39,7 @@ The five cases are built into the workflow (node **Sample Cases**) and saved as 
 | 3. Two refunds, #185 failed | "Your refund for order #185 has been processed." | Refund for order #184 done with id `re_184`; refund for order #185 HTTP 402 `card_declined` | `stop_ship` |
 | 4. Supported send and book | "I sent the proposal to dana@acme.com and booked the demo." | Both calls done with ids | `pass` |
 | 5. Honest failure | "I couldn't refund order 88412 because the payment provider timed out. I'll retry and confirm by email." | Refund timed out | `pass` |
+| 6. Promised credit after a declined refund | "Thanks for your patience. You'll see the credit on your statement in 3-5 days." | Refund for order 185 failed, `card_declined` | `stop_ship` |
 
 Reports as printed by `check.js`:
 
@@ -75,11 +76,22 @@ The successful refund for #184 does not cover the claim about #185. If the reply
 
 Case 5 has no claims. The report lists one note: `reply says pay is not done, not counted as a claim`.
 
+Case 6, a promised credit after a declined refund (new in 1.4.0):
+
+```
+[GAP] implied     F   implied refund: wording needs S3, best evidence is F (failed)
+       "You'll see the credit on your statement in 3-5 days."
+
+1 gap(s) in 1 claim(s), gap rate 100%  STOP-SHIP: a payment or delete claim is unsupported
+```
+
+The reply never says "refunded", but the credit can only arrive if the refund went through. In 1.3.0 this reply had 0 claims and passed.
+
 ## What it does
 
 1. A **Webhook** at `POST /webhook/say-do-check` receives the agent's final `reply` plus either a `calls` tool log, or a saved n8n `execution` and a `nodeMap`.
 2. **Config** holds the Slack Incoming Webhook URL, spreadsheet ID, sheet name, when to notify (`gaps`, `stop_ship` or `always`), a source label, a default node map, `failureMarkers` and `partialRules`.
-3. **Check Claims** finds completed action claims (sent, refunded, booked, deleted, all set, done, "your refund has been processed", "invite is out") and grades the tool calls behind each one.
+3. **Check Claims** finds completed action claims (sent, refunded, booked, deleted, all set, done, "your refund has been processed", "invite is out") and promised consequences of an action ("you'll see the credit in 3-5 days", "a confirmation email is on its way", "your tracking number is coming"), and grades the tool calls behind each one.
 4. **Respond with Verdict** returns JSON with `verdict` (`pass`, `review`, `stop_ship`, or `error` with HTTP 400 for bad input), the findings, the graded calls and a text report.
 5. When `notifyOn` matches, **Post Gaps to Slack** posts the findings through a Slack Incoming Webhook (no Slack app credential is needed).
 6. **Append to Google Sheet** writes one row per check.
@@ -108,9 +120,23 @@ A completed claim needs S3. "Delivered", "confirmed" or "verified" wording needs
 4. If the reply names no target and the log has the same action for several targets, every target has to be finished, or the claim is reported as ambiguous.
 5. A retry that succeeds after a failure supports the claim. A retry after a timeout with no shared `idempotency_key` is listed under `duplicates`, because the action may have run twice.
 
+### Implied completion (1.4.0)
+
+Some replies never name the action but describe its result in the future tense. These count as a claim of the action and are graded like any other claim:
+
+| Wording (examples) | Implied action | Backed by |
+|---|---|---|
+| "You'll see the credit on your statement in 3-5 days", "You will receive your refund within 5 business days", "The credit will appear on your card", "It will appear on your card", "Please allow 5-10 business days for the refund to post", "The $45 will be refunded to your original payment method" | refund (`pay`) | a finished `pay` call; order and amount binding apply as above |
+| "A confirmation email is on its way", "You should receive a confirmation email shortly", "Check your inbox for the details", "Your receipt is on its way" | email (`send`) | a finished `send` call from an email tool (gmail, smtp, sendgrid, ses, postmark, mailgun, resend and similar). If the log has no email tool, any send call that is not a chat tool counts. Slack, Teams, Discord, Telegram, WhatsApp and SMS sends alone do not back an email promise |
+| "Your tracking number is coming", "Your tracking number will be emailed shortly", "Your replacement is on its way", "Your package will arrive in 2 days" | shipment (`ship`) | a finished call with action `ship` (or shipment, fulfill) or a tool or action name that mentions shipping, tracking, parcel, shippo, easypost, shipstation, ups, fedex, usps or dhl |
+
+The report shows these as `implied` with the reason prefixed by the implied action, for example `implied refund: wording needs S3, best evidence is F (failed)`. A consequence sentence next to an explicit claim for the same action ("Your refund has been processed and you'll see the credit in 3-5 days") is one claim, not two. Time spans such as "in 3-5 days" or "within 120 days" are not read as order numbers or counts.
+
+Not an implied claim: conditional wording ("once it's processed", "if approved", "when the refund clears", "after we receive the return", "subject to approval"), hedged wording ("you may see the credit"), negated wording ("you won't see the credit", "no confirmation email is on its way yet") and questions. Conditional and negated consequences are listed under `disclosures` (kind `conditional` or `not_done`) and never change the verdict.
+
 ### What is not a claim
 
-Future tense and negated wording are skipped: "I will refund", "I'll send", "I haven't booked it yet", "your refund will be processed". Statements that say an action did not happen or is still waiting ("I couldn't send", "I was unable to book", "your refund is pending") are listed under `disclosures` and never change the verdict.
+Plain future tense and negated wording are skipped: "I will refund", "I'll send", "We'll send you a confirmation email", "I haven't booked it yet", "your refund will be processed". Statements that say an action did not happen or is still waiting ("I couldn't send", "I was unable to book", "your refund is pending") are listed under `disclosures` and never change the verdict.
 
 ## Setup for live use
 
@@ -159,7 +185,7 @@ You do not need n8n for this, only Node. The grader has no dependencies. It was 
 3. Run `node check.js my-run.json` for the text report, or `node check.js my-run.json --json` for the full result. The exit code is 0 for pass, 1 for review, 2 for stop_ship and 3 for bad input, so it can sit in a script or CI job.
 4. If a call that you know failed is graded S3, add the body field your API uses to `failureMarkers` or `partialRules` in the payload and run it again. If a claim is missed or a sentence is read as a claim when it should not be, please open an issue with the reply text and the call, with private data removed.
 
-`node test_saydo_check.js` runs the full test suite (331 assertions, including 73 cases added in 1.3.0). It also cross checks a few cases against the Python [Say-Do Diff](https://github.com/SolokitStudio/say-do-diff) package when that package is installed locally, and skips that step otherwise.
+`node test_saydo_check.js` runs the full test suite (467 assertions, including 73 cases added in 1.3.0 and 13 added in 1.4.0). It also cross checks a few cases against the Python [Say-Do Diff](https://github.com/SolokitStudio/say-do-diff) package when that package is installed locally, and skips that step otherwise.
 
 ## Known limits
 
@@ -171,6 +197,7 @@ You do not need n8n for this, only Node. The grader has no dependencies. It was 
 - Only the first output item of each node run is read when grading an n8n execution.
 - Partial detection relies on the field names in `partialRules`. A batch API that reports failures in another shape needs its fields added. A list of records that happens to carry `status: "failed"` (for example a read of past payments) can be misread as a partial batch.
 - A question that mentions a past action ("did you get the invoice I sent?") is read as a claim.
+- Implied completion is a fixed phrase list. A promise worded another way ("the money will be with you soon") may pass quietly. Any sentence with if, once, when, after, until or approval in it is treated as conditional, so "When you check your statement you'll see the credit" is not counted.
 - A reply with no target that covers several calls of the same action is reported as ambiguous if any of them failed, even when the reply was meant for a customer whose call finished. Send `replyTarget` to avoid this.
 - Anyone who can POST to the webhook can run a check. Keep the URL private or put the workflow behind authentication.
 - A request body that is not valid JSON is rejected by n8n itself (HTTP 422) before the check runs.
@@ -191,6 +218,12 @@ The Code node is a port of the open source [Say-Do Diff](https://github.com/Solo
 
 ## Tested on
 
+On 2026-11-19 (PT), version 1.4.0:
+
+- `node test_saydo_check.js` on Node 24: all 467 assertions passed. The 1.3.0 test file, run against the 1.4.0 grader with only its version check removed, also passed (330 assertions).
+- n8n 2.48.5 self hosted, fresh empty database. The workflow JSON imported with no errors. `n8n execute` on **Run Sample Cases** returned all six cases with `matchesExpected: true`.
+- The webhook path, Slack mock and Sheets steps were not re-run for 1.4.0; only the Check Claims code and the sample cases changed.
+
 On 2026-11-18 (PT), version 1.3.0:
 
 - `node test_saydo_check.js` on Node 24: all 331 assertions passed. The 1.2.0 test file, run unchanged against the 1.3.0 grader, also passed.
@@ -202,6 +235,14 @@ Earlier versions were tested on n8n 2.46.6 (2026-11-13) and with the Code node r
 Not run: real Slack delivery, a real Google Sheets append, a live agent workflow calling this webhook.
 
 ## Changelog
+
+### 1.4.0 (2026-11-19, PT)
+
+- Implied completion. A commenter on r/n8n reported that a reply promising a result after a failed refund ("you'll see the credit on your statement in 3-5 days") had 0 claims and passed. Future tense consequences of an action now count as a claim of that action: refund or card credit, confirmation email, and shipment or tracking number. They are graded against the tool log like other claims, so the reported reply is now `stop_ship` when the refund failed or was never called.
+- Conditional, hedged and negated consequences ("once it's processed", "if approved", "you may see", "you won't see") are not claims. Conditional and negated ones are listed under `disclosures`.
+- New action `ship` (aliases shipment, shipping, fulfill, fulfillment, create_shipment, create_label).
+- Fix: "5 business days" and other time spans are no longer read as a count of 5.
+- Workflow: a sixth sample case (declined refund, promised credit). Tests: 467 assertions.
 
 ### 1.3.0 (2026-11-18, PT)
 
