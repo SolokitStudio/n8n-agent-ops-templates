@@ -1,0 +1,7 @@
+{
+  "reply": "I refunded $45 for order 88412.",
+  "calls": [
+    {"tool": "stripe.refund", "action": "pay", "target": "order 88412", "amount": 45, "error": "timeout"},
+    {"tool": "stripe.refund", "action": "pay", "target": "order 88412", "amount": 45, "status": "done", "id": "re_88412b"}
+  ]
+}

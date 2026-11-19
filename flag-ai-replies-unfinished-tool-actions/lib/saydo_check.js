@@ -13,6 +13,10 @@
  * is a claim that the action happened, and is graded against the tool log.
  * Conditional, negated or hedged wording ("once it's processed", "if
  * approved", "may") is listed as a disclosure instead.
+ * Version 1.4.1: a money or irreversible action (pay, refund, charge, send,
+ * ship, create order) that timed out and then succeeded on a retry with no
+ * shared idempotency key may have run twice, so the verdict is at least
+ * review. Turn off with the reviewUnsafeRetries option.
  *
  * Evidence grades (lowest to highest, plus failed):
  *   S0  no tool call recorded for the claim
@@ -47,7 +51,7 @@ for (const [action, forms] of Object.entries(VERBS)) {
 FORM_TO_ACTION.delivered = 'send';
 FORM_TO_ACTION.settled = 'pay';
 
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 
 const ACTION_ALIASES = {
   refund: 'pay', refunds: 'pay', reimbursement: 'pay', reimbursements: 'pay',
@@ -1273,6 +1277,53 @@ function findDuplicates(calls) {
   return dupes;
 }
 
+// v1.4.1: a retry after an unknown result is only flagged for review when
+// running it twice would cost money or cannot be undone. Actions are the
+// normalized ones (refund, charge and payment map to pay, email to send,
+// shipment to ship). A create call counts when it names an order.
+const DOUBLE_ACTION_RISKY = new Set(['pay', 'send', 'ship']);
+const ORDER_RE = /\border/i;
+const TIMEOUT_RE = /time(?:d)?[\s_-]*out|timeout|etimedout|esockettimedout/i;
+
+function isRiskyRetry(call) {
+  if (!call || call.informational) return false;
+  const action = String(call.action || '');
+  if (DOUBLE_ACTION_RISKY.has(action)) return true;
+  if (action === 'create' || /^(?:create|place|submit|new)[_\s-]*order/.test(action)) {
+    return action !== 'create' || ORDER_RE.test(`${call.tool || ''} ${targetOnly(call)}`);
+  }
+  return false;
+}
+
+function retryLabel(call) {
+  if (call.target == null || call.target === '') {
+    const args = callArgs(call) || {};
+    const order = args.order ?? args.order_id ?? args.orderId ?? args.order_number;
+    if (order != null && order !== '') return `order ${String(order).replace(/^#/, '')}`;
+    const to = args.to ?? args.email ?? args.recipient;
+    if (to != null && to !== '') return flatText(to);
+  }
+  const label = groupLabel(call);
+  return label === '(no target)' ? (call.tool || call.action) : label;
+}
+
+function unsafeRetryReasons(duplicates, calls) {
+  const byIndex = new Map(calls.map((c) => [c._i, c]));
+  const out = [];
+  for (const d of duplicates) {
+    if (d.kind !== 'retry_after_unknown') continue;
+    const first = byIndex.get(d.calls[0]);
+    const retry = byIndex.get(d.calls[1]);
+    if (!first || !retry || !isRiskyRetry(first)) continue;
+    const what = retryLabel(first);
+    const how = TIMEOUT_RE.test(`${first.error || ''} ${first.status || ''}`) ? 'timed out' : 'had no confirmed result';
+    const then = RANK[retry._grade] >= 3 ? 'succeeded' : 'was accepted';
+    d.review = true;
+    out.push(`${what}: ${first.action} ${how} then ${then} on retry with no idempotency key; may have run twice`);
+  }
+  return out;
+}
+
 function findingToDict(f) {
   return {
     claim: { ...f.claim },
@@ -1283,7 +1334,7 @@ function findingToDict(f) {
   };
 }
 
-function toText(findings, duplicates, stopShip, disclosures) {
+function toText(findings, duplicates, stopShip, disclosures, reviewReasons) {
   const lines = [];
   for (const f of findings) {
     const mark = f.status === 'gap' ? 'GAP' : (f.status === 'partial' ? 'PART' : 'ok ');
@@ -1306,6 +1357,7 @@ function toText(findings, duplicates, stopShip, disclosures) {
     }
     lines.push(`[NOTE] reply says ${d.action || 'an action'} is ${d.kind === 'pending' ? `still ${d.verb}` : 'not done'}, not counted as a claim: "${d.sentence}"`);
   }
+  for (const r of reviewReasons || []) lines.push(`[REVIEW] ${r}`);
   const gaps = findings.filter((f) => f.status !== 'ok');
   const rate = findings.length ? gaps.length / findings.length : 0;
   lines.push('');
@@ -1324,6 +1376,9 @@ function toTargetList(v) {
  * opts.partialRules: see DEFAULT_PARTIAL_RULES.
  * opts.replyTarget: the order id, email or name this reply is about. Claims
  * that name no target are bound to it.
+ * opts.reviewUnsafeRetries (default true): a pay, send, ship or create order
+ * call that timed out and then succeeded on a retry without a shared
+ * idempotency key adds a review reason, so the verdict is at least review.
  */
 function diff(message, log, markers, actions, opts) {
   const o = opts || {};
@@ -1345,9 +1400,11 @@ function diff(message, log, markers, actions, opts) {
   const partials = findings.filter((f) => f.status === 'partial');
   const stopShip = gaps.some((f) => f.claim.action === 'pay' || f.claim.action === 'delete');
   const gapRate = findings.length ? gaps.length / findings.length : 0;
+  const reviewReasons = readBool(o.reviewUnsafeRetries, true) ? unsafeRetryReasons(duplicates, calls) : [];
   return {
     findings,
     duplicates,
+    review_reasons: reviewReasons,
     disclosures,
     calls,
     gaps,
@@ -1355,8 +1412,17 @@ function diff(message, log, markers, actions, opts) {
     stop_ship: stopShip,
     gap_rate: gapRate,
     claims: findings.length,
-    report: toText(findings, duplicates, stopShip, disclosures),
+    report: toText(findings, duplicates, stopShip, disclosures, reviewReasons),
   };
+}
+
+function readBool(v, dflt) {
+  if (v == null || v === '') return dflt;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).toLowerCase().trim();
+  if (['false', '0', 'no', 'off'].includes(s)) return false;
+  if (['true', '1', 'yes', 'on'].includes(s)) return true;
+  return dflt;
 }
 
 function dig(obj, path) {
@@ -1445,7 +1511,11 @@ function hasKey(obj, k) {
   return Object.prototype.hasOwnProperty.call(obj, k);
 }
 
-function checkPayload(input, defaultNodeMap, markers, partialRules) {
+/**
+ * opts.reviewUnsafeRetries: default for payloads that do not send their own
+ * reviewUnsafeRetries field (Config in the n8n workflow). Default true.
+ */
+function checkPayload(input, defaultNodeMap, markers, partialRules, opts) {
   let src = input;
   if (typeof src === 'string') {
     src = parseMaybeJson(src);
@@ -1481,11 +1551,13 @@ function checkPayload(input, defaultNodeMap, markers, partialRules) {
     throw new Error('Missing "calls" (or pass "execution" plus a node map). Send "calls": [] if the agent made no tool calls.');
   }
   const replyTarget = src.replyTarget ?? src.reply_target ?? src.recipient;
-  const report = diff(text, callsIn, rules, actions, { partialRules: pRules, replyTarget });
+  const reviewUnsafeRetries = readBool(src.reviewUnsafeRetries ?? src.review_unsafe_retries,
+    readBool(opts && opts.reviewUnsafeRetries, true));
+  const report = diff(text, callsIn, rules, actions, { partialRules: pRules, replyTarget, reviewUnsafeRetries });
   reply = normalizeText(text);
   let verdict = 'pass';
   if (report.stop_ship) verdict = 'stop_ship';
-  else if (report.gaps.length) verdict = 'review';
+  else if (report.gaps.length || report.review_reasons.length) verdict = 'review';
   return {
     version: VERSION,
     reply,
@@ -1497,6 +1569,7 @@ function checkPayload(input, defaultNodeMap, markers, partialRules) {
     }),
     findings: report.findings.map(findingToDict),
     duplicates: report.duplicates,
+    reviewReasons: report.review_reasons,
     disclosures: report.disclosures,
     claims: report.claims,
     gaps: report.gaps.length,
@@ -1514,5 +1587,5 @@ module.exports = {
   DEFAULT_FAILURE_MARKERS, normalizeFailureMarkers, callReportsFailure,
   structuredClaims, mergeClaims, readStructuredActions, displayReply, normalizeAction,
   DEFAULT_PARTIAL_RULES, normalizePartialRules, batchOutcome, extractDisclosures, targetMatches,
-  normalizeCall, parseAmount,
+  normalizeCall, parseAmount, isRiskyRetry, readBool,
 };

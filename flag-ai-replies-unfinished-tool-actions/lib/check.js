@@ -8,7 +8,7 @@
  *
  * The payload is the same body the webhook takes: {"reply", "calls"} or
  * {"execution", "nodeMap"}, plus optional "actions", "replyTarget",
- * "failureMarkers" and "partialRules".
+ * "failureMarkers", "partialRules" and "reviewUnsafeRetries" (default true).
  * Exit code: 0 pass, 1 review, 2 stop_ship, 3 bad input.
  */
 'use strict';

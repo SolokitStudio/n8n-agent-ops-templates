@@ -4,9 +4,9 @@ An n8n workflow that compares an AI agent's final reply with the tool results fr
 
 No AI key is required. The check is a Code node you can read, and the same file runs outside n8n with Node.
 
-Version 1.4.0. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
+Version 1.4.1. Workflow file: [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json)
 
-Also in the official n8n template library: [Flag unsupported AI agent actions with Slack alerts and Google Sheets logs](https://n8n.io/workflows/22987-flag-unsupported-ai-agent-actions-with-slack-alerts-and-google-sheets-logs/). The library page carries version 1.2.0. This repository has 1.4.0.
+Also in the official n8n template library: [Flag unsupported AI agent actions with Slack alerts and Google Sheets logs](https://n8n.io/workflows/22987-flag-unsupported-ai-agent-actions-with-slack-alerts-and-google-sheets-logs/). The library page carries version 1.2.0. This repository has 1.4.1.
 
 Support and updates: [solokit33.gumroad.com/l/n8n-agent-claim-check](https://solokit33.gumroad.com/l/n8n-agent-claim-check)
 
@@ -16,7 +16,7 @@ Grading saved runs in bulk for a client report: [Agent Claim Audit ($19)](https:
 
 1. In n8n, open a new workflow, choose **Import from File** and pick [flag-ai-replies-unfinished-tool-actions.json](flag-ai-replies-unfinished-tool-actions.json).
 2. Click **Execute workflow**. If n8n asks which trigger to use, pick **Run Sample Cases**. You can also hover over that node and click its play button.
-3. Open **Sample Results**. There is one row per built in case, with `expected`, `verdict` and `matchesExpected`. All six rows should show `matchesExpected: true`.
+3. Open **Sample Results**. There is one row per built in case, with `expected`, `verdict` and `matchesExpected`. All seven rows should show `matchesExpected: true`.
 
 The sample path never reaches Slack or Google Sheets, so nothing needs to be connected for this step.
 
@@ -30,7 +30,7 @@ node check.js samples/2-batch-partial.json
 
 ## Sample cases and expected output
 
-The six cases are built into the workflow (node **Sample Cases**) and saved as files in [lib/samples](lib/samples). `node check.js <file>` prints the same report the webhook returns.
+The seven cases are built into the workflow (node **Sample Cases**) and saved as files in [lib/samples](lib/samples). `node check.js <file>` prints the same report the webhook returns.
 
 | Case | Reply | Tool log | Verdict |
 |---|---|---|---|
@@ -40,6 +40,7 @@ The six cases are built into the workflow (node **Sample Cases**) and saved as f
 | 4. Supported send and book | "I sent the proposal to dana@acme.com and booked the demo." | Both calls done with ids | `pass` |
 | 5. Honest failure | "I couldn't refund order 88412 because the payment provider timed out. I'll retry and confirm by email." | Refund timed out | `pass` |
 | 6. Promised credit after a declined refund | "Thanks for your patience. You'll see the credit on your statement in 3-5 days." | Refund for order 185 failed, `card_declined` | `stop_ship` |
+| 7. Refund retried after a timeout, no idempotency key | "I refunded $45 for order 88412." | Refund for order 88412 timed out, then a retry finished with id `re_88412b`; neither call has an `idempotency_key` | `review` |
 
 Reports as printed by `check.js`:
 
@@ -87,13 +88,25 @@ Case 6, a promised credit after a declined refund (new in 1.4.0):
 
 The reply never says "refunded", but the credit can only arrive if the refund went through. In 1.3.0 this reply had 0 claims and passed.
 
+Case 7, a refund retried after a timeout with no idempotency key (new in 1.4.1):
+
+```
+[ok ] refunded    S3  supported at S3
+[DUP] stripe.refund pay order 88412 retried after an unknown result without one idempotency key, so it may have run twice (entries 0,1)
+[REVIEW] order 88412: pay timed out then succeeded on retry with no idempotency key; may have run twice
+
+0 gap(s) in 1 claim(s), gap rate 0%
+```
+
+The claim itself is supported, but the customer may have been refunded twice. In 1.4.0 this was listed as a duplicate and still passed.
+
 ## What it does
 
 1. A **Webhook** at `POST /webhook/say-do-check` receives the agent's final `reply` plus either a `calls` tool log, or a saved n8n `execution` and a `nodeMap`.
-2. **Config** holds the Slack Incoming Webhook URL, spreadsheet ID, sheet name, when to notify (`gaps`, `stop_ship` or `always`), a source label, a default node map, `failureMarkers` and `partialRules`.
+2. **Config** holds the Slack Incoming Webhook URL, spreadsheet ID, sheet name, when to notify (`gaps`, `stop_ship` or `always`), a source label, a default node map, `failureMarkers`, `partialRules` and `reviewUnsafeRetries`.
 3. **Check Claims** finds completed action claims (sent, refunded, booked, deleted, all set, done, "your refund has been processed", "invite is out") and promised consequences of an action ("you'll see the credit in 3-5 days", "a confirmation email is on its way", "your tracking number is coming"), and grades the tool calls behind each one.
 4. **Respond with Verdict** returns JSON with `verdict` (`pass`, `review`, `stop_ship`, or `error` with HTTP 400 for bad input), the findings, the graded calls and a text report.
-5. When `notifyOn` matches, **Post Gaps to Slack** posts the findings through a Slack Incoming Webhook (no Slack app credential is needed).
+5. When `notifyOn` matches (`gaps` also covers a review reason with no gaps, such as a retry that may have run twice), **Post Gaps to Slack** posts the findings through a Slack Incoming Webhook (no Slack app credential is needed).
 6. **Append to Google Sheet** writes one row per check.
 
 Call this webhook from the workflow that runs your agent, after the agent node finishes, and hold the outbound message when the verdict is not `pass`.
@@ -119,6 +132,12 @@ A completed claim needs S3. "Delivered", "confirmed" or "verified" wording needs
 3. If the reply names an amount, only calls with that amount count. `"45.00"`, `"$45.00"` and `amount_cents: 4500` all match $45. A different currency is a gap.
 4. If the reply names no target and the log has the same action for several targets, every target has to be finished, or the claim is reported as ambiguous.
 5. A retry that succeeds after a failure supports the claim. A retry after a timeout with no shared `idempotency_key` is listed under `duplicates`, because the action may have run twice.
+
+### Retries that may have run twice (1.4.1)
+
+A timeout has an unknown outcome: the first call may have gone through before the connection dropped. If a pay, send, ship or create order call (log actions such as `refund`, `charge`, `payment`, `email`, `shipment`, `create_label` and `create_order` map to these; a `create` call counts when its tool or target names an order) timed out or had no confirmed result and a later retry for the same tool and target finished, and the two calls do not share one `idempotency_key`, the verdict is at least `review`, even when every claim is supported. The reason is listed under `reviewReasons` and in the report, for example `order 88412: pay timed out then succeeded on retry with no idempotency key; may have run twice`. A `stop_ship` verdict stays `stop_ship`.
+
+Not flagged: both calls share the same `idempotency_key`, the first call failed outright (HTTP 4xx or 5xx, a failed status), or the action is a read or another action such as lookup, get, search, update, book or a create that names no order. Those are still listed under `duplicates`. Set `reviewUnsafeRetries` to `false` in Config (or in one payload) to keep the 1.4.0 behavior.
 
 ### Implied completion (1.4.0)
 
@@ -163,6 +182,7 @@ Optional fields:
 - `replyTarget` (or `recipient`): the order, email or name this reply is for. Claims that name no target are bound to it.
 - `actions`: a structured list such as `[{"action":"refund","status":"done","target":"order 88412","amount":45}]`, graded against the log. The verb list still runs on the reply text.
 - `failureMarkers`, `partialRules`: override the Config lists for one request.
+- `reviewUnsafeRetries`: `true` or `false`, overrides Config for one request.
 - `execution` plus `nodeMap`: a saved n8n execution (`GET /api/v1/executions/<id>?includeData=true`) instead of `calls`. A default map is in Config.
 
 Fields read from each call: `action`, `tool`, `target` (string, object or list; when it is missing, the tool arguments in `args`, `arguments`, `input` or `params` are used), `id` or `object_id`, `status`, `http_status` (also `statusCode`, `status_code`, or a numeric `status`), `error`, `body` (or `data`, `json`, `result`, `response`, `output`), `amount`, `amount_cents`, `amount_unit`, `currency`, `idempotency_key`.
@@ -185,7 +205,7 @@ You do not need n8n for this, only Node. The grader has no dependencies. It was 
 3. Run `node check.js my-run.json` for the text report, or `node check.js my-run.json --json` for the full result. The exit code is 0 for pass, 1 for review, 2 for stop_ship and 3 for bad input, so it can sit in a script or CI job.
 4. If a call that you know failed is graded S3, add the body field your API uses to `failureMarkers` or `partialRules` in the payload and run it again. If a claim is missed or a sentence is read as a claim when it should not be, please open an issue with the reply text and the call, with private data removed.
 
-`node test_saydo_check.js` runs the full test suite (467 assertions, including 73 cases added in 1.3.0 and 13 added in 1.4.0). It also cross checks a few cases against the Python [Say-Do Diff](https://github.com/SolokitStudio/say-do-diff) package when that package is installed locally, and skips that step otherwise.
+`node test_saydo_check.js` runs the full test suite (530 assertions, including 73 cases added in 1.3.0, 13 added in 1.4.0 and 10 added in 1.4.1). It also cross checks a few cases against the Python [Say-Do Diff](https://github.com/SolokitStudio/say-do-diff) package when that package is installed locally, and skips that step otherwise.
 
 ## Known limits
 
@@ -202,6 +222,7 @@ You do not need n8n for this, only Node. The grader has no dependencies. It was 
 - Anyone who can POST to the webhook can run a check. Keep the URL private or put the workflow behind authentication.
 - A request body that is not valid JSON is rejected by n8n itself (HTTP 422) before the check runs.
 - If Slack or Sheets fails after the verdict has been returned, the caller still has the JSON result, but the notify or log step may be missing.
+- A retry is matched to the timed out call by tool, action and target. If the retry logs a different target string (for example `88412` instead of `order 88412`), it is not flagged.
 - No duplicate check across requests. The same payload posted twice is checked twice.
 
 ## What only ours does
@@ -217,6 +238,12 @@ Closest templates already in the n8n library, and how this one differs:
 The Code node is a port of the open source [Say-Do Diff](https://github.com/SolokitStudio/say-do-diff) checker and its n8n adapter.
 
 ## Tested on
+
+On 2026-11-19 (PT), version 1.4.1:
+
+- `node test_saydo_check.js` on Node 24: all 530 assertions passed. The 1.4.0 test file, run against the 1.4.1 grader with its version checks removed and the one changed verdict (retry after a timeout without a key, now `review`) left out, also passed.
+- n8n 2.48.5 self hosted, fresh empty database. The workflow JSON imported with no errors. `n8n execute` on **Run Sample Cases** returned all seven cases with `matchesExpected: true`. A copy with `reviewUnsafeRetries` set to `false` in Config returned `pass` for case 7 and the same verdicts as before for cases 1 to 6.
+- The webhook path, Slack mock and Sheets steps were not re-run for 1.4.1. The Slack step now also posts when `notifyOn` is `gaps` and the result has a review reason but no gaps.
 
 On 2026-11-19 (PT), version 1.4.0:
 
@@ -235,6 +262,12 @@ Earlier versions were tested on n8n 2.46.6 (2026-11-13) and with the Code node r
 Not run: real Slack delivery, a real Google Sheets append, a live agent workflow calling this webhook.
 
 ## Changelog
+
+### 1.4.1 (2026-11-19, PT)
+
+- A commenter on r/n8n pointed out that a refund which timed out and then succeeded on a retry may have been issued twice, and the reply "refunded once" still passed. Since 1.3.0 this was listed under `duplicates` as a possible double action, but the verdict stayed `pass`. Now a pay, send, ship or create order call retried after a timeout or unknown result with no shared `idempotency_key` raises the verdict to at least `review`, with a reason such as `order 88412: pay timed out then succeeded on retry with no idempotency key; may have run twice` in `reviewReasons` and the report. The same key on both calls is not flagged. Read only and other actions are unchanged. `stop_ship` is never lowered.
+- New Config field `reviewUnsafeRetries` (default `true`), also accepted per request.
+- Workflow: a seventh sample case (refund retried after a timeout, expected `review`). Tests: 530 assertions.
 
 ### 1.4.0 (2026-11-19, PT)
 

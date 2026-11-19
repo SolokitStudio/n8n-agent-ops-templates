@@ -4,6 +4,12 @@ All notable changes to the templates in this repository.
 
 ## Flag AI replies in Slack when tool actions did not finish
 
+### 1.4.1 (2026-11-19, PT)
+
+- Retries that may have run twice. A commenter on r/n8n pointed out that a refund which timed out and then succeeded on a retry may have been issued twice, and the reply "refunded once" still passed. Since 1.3.0 this was listed under `duplicates` (kind `retry_after_unknown`) but the verdict stayed `pass`. Now, when a money or irreversible action (pay, refund, charge, send or email, ship, create order, using the existing action aliases) times out or has an unknown result and a retry for the same tool and target finishes, and the two calls share no `idempotency_key`, the verdict is at least `review`. The reason is listed under `reviewReasons` and in the report, for example `order 88412: pay timed out then succeeded on retry with no idempotency key; may have run twice`. The same key on both calls is not flagged. Read only and other actions (lookup, get, update, book, a create that names no order) are unchanged. `stop_ship` is never lowered.
+- New Config field `reviewUnsafeRetries` (default `true`), also accepted per request, to keep the 1.4.0 behavior.
+- Workflow: a seventh built in sample case (refund retried after a timeout without a key, expected `review`). Tests: 530 assertions, including 10 new cases.
+
 ### 1.4.0 (2026-11-19, PT)
 
 - Implied completion. A commenter on r/n8n reported that a reply promising a result after a failed refund ("you'll see the credit on your statement in 3-5 days") had 0 claims and passed. Future tense consequences of an action now count as a claim of that action: refund or card credit ("the credit will appear on your card", "you will receive your refund within 5 business days"), confirmation email ("a confirmation email is on its way"), and shipment ("your tracking number is coming"). They are graded against the tool log like other claims, so the reported reply is now `stop_ship` when the refund failed or was never called. An email promise needs an email send; a Slack or other chat send alone does not back it.

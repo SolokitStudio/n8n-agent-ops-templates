@@ -585,7 +585,8 @@ t13('retry after a timeout without an idempotency key is flagged as a possible d
     { tool: 's', action: 'pay', target: 'order 88412', amount: 45, status: 'done', id: 're' },
   ];
   const out = chk({ reply: 'I refunded $45 for order 88412.', calls });
-  assert.strictEqual(out.verdict, 'pass');
+  // 1.4.1: a refund that may have run twice goes to review (u/Novel_Willow_8780).
+  assert.strictEqual(out.verdict, 'review');
   assert.strictEqual(out.duplicates[0].kind, 'retry_after_unknown');
   assert.ok(out.report.includes('may have run twice'));
   calls.forEach((c) => { c.idempotency_key = 'k1'; });
@@ -701,6 +702,7 @@ t13('README sample files give the documented verdicts through check.js', () => {
     '4-supported-send-and-book.json': ['pass', 0],
     '5-honest-failure.json': ['pass', 0],
     '6-future-tense-credit.json': ['stop_ship', 2],
+    '7-retry-without-key.json': ['review', 1],
   };
   for (const [file, [verdict, code]] of Object.entries(want)) {
     const res = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), path.join(__dirname, 'samples', file)], { encoding: 'utf8' });
@@ -727,7 +729,7 @@ t13('targets and amounts are read from tool arguments when no target is logged',
   assert.strictEqual(chk({ reply: 'Both refunds have been processed.', calls: both }).verdict, 'pass');
 });
 
-assert.strictEqual(L13.VERSION, '1.4.0');
+assert.strictEqual(L13.VERSION, '1.4.1');
 console.log(`v1.3.0 cases passed: ${n13}`);
 
 // --- v1.4.0: implied completion (u/Innenausbau_Aweys on r/n8n: a future
@@ -891,8 +893,118 @@ t14('ship is an action alias', () => {
   assert.strictEqual(L13.normalizeCall({ action: 'shipment' }).action, 'ship');
   assert.strictEqual(L13.normalizeCall({ action: 'fulfill' }).action, 'ship');
 });
-assert.strictEqual(L13.VERSION, '1.4.0');
+assert.strictEqual(L13.VERSION, '1.4.1');
 console.log(`v1.4.0 cases passed: ${n14}`);
+
+// --- v1.4.1: a money or irreversible action that timed out and then
+// succeeded on a retry with no shared idempotency key may have run twice
+// (u/Novel_Willow_8780 on r/n8n: "refunded once" still passed).
+let n141 = 0;
+function t141(name, fn) { fn(); n141 += 1; }
+const retryPay = (extra) => [
+  { tool: 'stripe.refund', action: 'pay', target: 'order 88412', amount: 45, error: 'timeout', ...extra },
+  { tool: 'stripe.refund', action: 'pay', target: 'order 88412', amount: 45, status: 'done', id: 're_2', ...extra },
+];
+t141('money action retried after a timeout with no key is review with a reason', () => {
+  const out = chk({ reply: 'I refunded $45 for order 88412.', calls: retryPay() });
+  assert.strictEqual(out.verdict, 'review');
+  assert.strictEqual(out.gaps, 0);
+  assert.strictEqual(out.stopShip, false);
+  assert.deepStrictEqual(out.reviewReasons, ['order 88412: pay timed out then succeeded on retry with no idempotency key; may have run twice']);
+  assert.strictEqual(out.duplicates[0].review, true);
+  assert.ok(out.report.includes('[REVIEW] order 88412: pay timed out then succeeded on retry'));
+  assert.strictEqual(out.version, '1.4.1');
+});
+t141('the same idempotency key on both calls is not flagged', () => {
+  const out = chk({ reply: 'I refunded $45 for order 88412.', calls: retryPay({ idempotency_key: 'rf-88412' }) });
+  assert.strictEqual(out.verdict, 'pass');
+  assert.deepStrictEqual(out.duplicates, []);
+  assert.deepStrictEqual(out.reviewReasons, []);
+});
+t141('different idempotency keys are still flagged', () => {
+  const calls = retryPay();
+  calls[0].idempotency_key = 'a';
+  calls[1].idempotency_key = 'b';
+  assert.strictEqual(chk({ reply: 'I refunded $45 for order 88412.', calls }).verdict, 'review');
+});
+t141('refund, charge, email, ship and create order aliases are covered', () => {
+  for (const [action, tool, target] of [
+    ['refund', 'stripe', 'order 1'], ['charge', 'stripe', 'order 2'], ['email', 'gmail', 'a@b.co'],
+    ['send', 'gmail', 'a@b.co'], ['shipment', 'shippo', 'order 3'], ['create_label', 'shippo', 'order 4'],
+    ['create_order', 'shop', 'cart 5'], ['create', 'shopify.order', 'cart 6'], ['create', 'shop', 'order 7'],
+  ]) {
+    const out = chk({ reply: 'Thanks for waiting.', calls: [
+      { tool, action, target, error: 'ETIMEDOUT' },
+      { tool, action, target, status: 'done', id: 'x1' },
+    ] });
+    assert.strictEqual(out.verdict, 'review', `${action} ${tool}`);
+    assert.strictEqual(out.reviewReasons.length, 1, `${action} ${tool}`);
+  }
+});
+t141('read only and other actions are unchanged', () => {
+  for (const [action, tool] of [['lookup', 'crm'], ['get', 'stripe'], ['search', 'kb'], ['create', 'jira'], ['update', 'crm'], ['book', 'gcal']]) {
+    const out = chk({ reply: 'Thanks for waiting.', calls: [
+      { tool, action, target: 'order 88412', error: 'timeout' },
+      { tool, action, target: 'order 88412', status: 'done', id: 'x1' },
+    ] });
+    if (action !== 'create') {
+      assert.strictEqual(out.verdict, 'pass', `${action}`);
+      assert.deepStrictEqual(out.reviewReasons, [], `${action}`);
+    }
+    assert.strictEqual(out.duplicates[0].kind, 'retry_after_unknown');
+  }
+  // a create that names no order (a ticket) is not a money action
+  const ticket = chk({ reply: 'Thanks for waiting.', calls: [
+    { tool: 'jira', action: 'create', target: 'ticket SUP-9', error: 'timeout' },
+    { tool: 'jira', action: 'create', target: 'ticket SUP-9', status: 'done', id: 'SUP-9' },
+  ] });
+  assert.strictEqual(ticket.verdict, 'pass');
+});
+t141('stop_ship is never downgraded', () => {
+  const out = chk({ reply: 'I refunded $45 for order 88412 and refunded $30 for order 184.', calls: [
+    ...retryPay(),
+    { tool: 'stripe.refund', action: 'pay', target: 'order 184', amount: 30, status: 'failed', error: 'card_declined' },
+  ] });
+  assert.strictEqual(out.verdict, 'stop_ship');
+  assert.strictEqual(out.reviewReasons.length, 1);
+});
+t141('an unknown result that is not a timeout is worded as such', () => {
+  const out = chk({ reply: 'Thanks.', calls: [
+    { tool: 'p', action: 'pay', target: 'order 9', status: 'unknown' },
+    { tool: 'p', action: 'pay', target: 'order 9', status: 'queued' },
+  ] });
+  assert.deepStrictEqual(out.reviewReasons, ['order 9: pay had no confirmed result then was accepted on retry with no idempotency key; may have run twice']);
+});
+t141('target from tool arguments when none was logged', () => {
+  const out = chk({ reply: 'Thanks.', calls: [
+    { tool: 'p', action: 'refund', args: { order: '185', amount: 45 }, error: 'timeout' },
+    { tool: 'p', action: 'refund', args: { order: '185', amount: 45 }, status: 'done', id: 're' },
+  ] });
+  assert.strictEqual(out.verdict, 'review');
+  assert.ok(out.reviewReasons[0].startsWith('order 185: pay timed out'), out.reviewReasons[0]);
+});
+t141('the flag can be turned off per payload or by default', () => {
+  const off = chk({ reply: 'I refunded $45 for order 88412.', calls: retryPay(), reviewUnsafeRetries: false });
+  assert.strictEqual(off.verdict, 'pass');
+  assert.deepStrictEqual(off.reviewReasons, []);
+  assert.strictEqual(off.duplicates[0].kind, 'retry_after_unknown');
+  const cfgOff = L13.checkPayload({ reply: 'I refunded $45 for order 88412.', calls: retryPay() }, null, undefined, undefined, { reviewUnsafeRetries: 'false' });
+  assert.strictEqual(cfgOff.verdict, 'pass');
+  const payloadOn = L13.checkPayload({ reply: 'I refunded $45 for order 88412.', calls: retryPay(), reviewUnsafeRetries: true }, null, undefined, undefined, { reviewUnsafeRetries: false });
+  assert.strictEqual(payloadOn.verdict, 'review');
+  assert.strictEqual(L13.diff('I refunded $45 for order 88412.', retryPay()).review_reasons.length, 1);
+  assert.strictEqual(L13.diff('I refunded $45 for order 88412.', retryPay(), undefined, undefined, { reviewUnsafeRetries: false }).review_reasons.length, 0);
+});
+t141('a retry after a failure (not unknown) is not flagged', () => {
+  const out = chk({ reply: 'I refunded $45 for order 88412.', calls: [
+    { tool: 's', action: 'pay', target: 'order 88412', amount: 45, http_status: 500 },
+    { tool: 's', action: 'pay', target: 'order 88412', amount: 45, status: 'done', id: 're' },
+  ] });
+  assert.strictEqual(out.verdict, 'pass');
+  assert.deepStrictEqual(out.reviewReasons, []);
+});
+assert.strictEqual(L13.VERSION, '1.4.1');
+console.log(`v1.4.1 cases passed: ${n141}`);
 
 // Cross-check a few cases against the Python package when it is installed
 if (fs.existsSync(path.join(OSS, 'saydo_diff'))) {
